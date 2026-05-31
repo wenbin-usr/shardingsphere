@@ -48,9 +48,13 @@ public final class KernelProcessor {
      */
     public ExecutionContext generateExecutionContext(final QueryContext queryContext, final RuleMetaData globalRuleMetaData, final ConfigurationProperties props) {
         check(queryContext);
+        // 路由
         RouteContext routeContext = route(queryContext, globalRuleMetaData, props);
+        // SQL改写
         SQLRewriteResult rewriteResult = rewrite(queryContext, globalRuleMetaData, props, routeContext);
+        // 组装最终执行上下文
         ExecutionContext result = createExecutionContext(queryContext, routeContext, rewriteResult);
+        // 当配置sql-show: true时打印逻辑SQL、路由与改写后的实际 SQL
         logSQL(queryContext, props, result);
         return result;
     }

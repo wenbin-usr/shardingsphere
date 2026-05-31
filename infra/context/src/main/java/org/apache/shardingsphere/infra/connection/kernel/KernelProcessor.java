@@ -47,6 +47,7 @@ public final class KernelProcessor {
      * @return execution context
      */
     public ExecutionContext generateExecutionContext(final QueryContext queryContext, final RuleMetaData globalRuleMetaData, final ConfigurationProperties props) {
+        // 执行前校验
         check(queryContext);
         // 路由
         RouteContext routeContext = route(queryContext, globalRuleMetaData, props);

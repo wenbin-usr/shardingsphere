@@ -266,12 +266,14 @@ public final class ShardingStandardRoutingEngine implements ShardingRouteEngine 
     
     private Collection<DataNode> routeTables(final TableRule tableRule, final String routedDataSource,
                                              final ShardingStrategy tableShardingStrategy, final List<ShardingConditionValue> tableShardingValues) {
+        // 可用的真实物理表
         Collection<String> availableTargetTables = tableRule.getActualTableNames(routedDataSource);
         Collection<String> routedTables = tableShardingValues.isEmpty()
                 ? availableTargetTables
                 : tableShardingStrategy.doSharding(availableTargetTables, tableShardingValues, tableRule.getTableDataNode(), properties);
         Collection<DataNode> result = new LinkedList<>();
         for (String each : routedTables) {
+            // 封装成DataNode数据节点
             result.add(new DataNode(routedDataSource, each));
         }
         return result;

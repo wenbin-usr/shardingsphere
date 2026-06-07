@@ -270,6 +270,7 @@ public final class ShardingStandardRoutingEngine implements ShardingRouteEngine 
         Collection<String> availableTargetTables = tableRule.getActualTableNames(routedDataSource);
         Collection<String> routedTables = tableShardingValues.isEmpty()
                 ? availableTargetTables
+                // 表路由
                 : tableShardingStrategy.doSharding(availableTargetTables, tableShardingValues, tableRule.getTableDataNode(), properties);
         Collection<DataNode> result = new LinkedList<>();
         for (String each : routedTables) {

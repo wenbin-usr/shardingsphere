@@ -80,8 +80,10 @@ public final class ShardingStandardRoutingEngine implements ShardingRouteEngine 
     }
     
     private Collection<DataNode> getDataNodes(final ShardingRule shardingRule, final TableRule tableRule) {
+        // 分库策略
         ShardingStrategy databaseShardingStrategy = createShardingStrategy(shardingRule.getDatabaseShardingStrategyConfiguration(tableRule),
                 shardingRule.getShardingAlgorithms(), shardingRule.getDefaultShardingColumn());
+        // 分表策略
         ShardingStrategy tableShardingStrategy = createShardingStrategy(shardingRule.getTableShardingStrategyConfiguration(tableRule),
                 shardingRule.getShardingAlgorithms(), shardingRule.getDefaultShardingColumn());
         if (isRoutingByHint(shardingRule, tableRule)) {
@@ -241,9 +243,11 @@ public final class ShardingStandardRoutingEngine implements ShardingRouteEngine 
     private Collection<DataNode> route0(final TableRule tableRule,
                                         final ShardingStrategy databaseShardingStrategy, final List<ShardingConditionValue> databaseShardingValues,
                                         final ShardingStrategy tableShardingStrategy, final List<ShardingConditionValue> tableShardingValues) {
+        // 分库路由
         Collection<String> routedDataSources = routeDataSources(tableRule, databaseShardingStrategy, databaseShardingValues);
         Collection<DataNode> result = new LinkedList<>();
         for (String each : routedDataSources) {
+            // 分表路由
             result.addAll(routeTables(tableRule, each, tableShardingStrategy, tableShardingValues));
         }
         return result;

@@ -53,7 +53,9 @@ public final class HashModShardingAlgorithm implements StandardShardingAlgorithm
     
     @Override
     public String doSharding(final Collection<String> availableTargetNames, final PreciseShardingValue<Comparable<?>> shardingValue) {
+        // 对分片键的值取hashCode，并对分片数量取模，生成后缀数字
         String suffix = String.valueOf(hashShardingValue(shardingValue.getValue()) % shardingCount);
+        // 拼接得到目标库表
         return ShardingAutoTableAlgorithmUtil.findMatchedTargetName(availableTargetNames, suffix, shardingValue.getDataNodeInfo()).orElse(null);
     }
     

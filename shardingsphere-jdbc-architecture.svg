@@ -1,0 +1,515 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="1340" viewBox="0 0 1480 1340" font-family="'Segoe UI','Microsoft YaHei','PingFang SC',Arial,sans-serif">
+  <defs>
+    <!-- 整体浅色背景渐变 -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FAFCFF"/>
+      <stop offset="100%" stop-color="#F0F4FA"/>
+    </linearGradient>
+    <linearGradient id="bgGrad2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#F5F8FD"/>
+      <stop offset="50%" stop-color="#FAFCFF"/>
+      <stop offset="100%" stop-color="#F5F8FD"/>
+    </linearGradient>
+
+    <!-- 各层颜色（柔和淡色系），左侧色条 -->
+    <linearGradient id="bar-app" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5B8DEF"/><stop offset="100%" stop-color="#3F73D6"/>
+    </linearGradient>
+    <linearGradient id="bar-entry" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F5A623"/><stop offset="100%" stop-color="#E8911A"/>
+    </linearGradient>
+    <linearGradient id="bar-adapter" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#52B788"/><stop offset="100%" stop-color="#3FA069"/>
+    </linearGradient>
+    <linearGradient id="bar-core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7B6CFF"/><stop offset="100%" stop-color="#6356E0"/>
+    </linearGradient>
+    <linearGradient id="bar-engine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#EC6F9C"/><stop offset="100%" stop-color="#D85280"/>
+    </linearGradient>
+    <linearGradient id="bar-pipeline" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2BB6B0"/><stop offset="100%" stop-color="#1E9D97"/>
+    </linearGradient>
+    <linearGradient id="bar-feature" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9B7AE0"/><stop offset="100%" stop-color="#8062CC"/>
+    </linearGradient>
+    <linearGradient id="bar-kernel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E0A800"/><stop offset="100%" stop-color="#C49000"/>
+    </linearGradient>
+    <linearGradient id="bar-mode" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FA3D1"/><stop offset="100%" stop-color="#3A8AB8"/>
+    </linearGradient>
+    <linearGradient id="bar-infra" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8895A7"/><stop offset="100%" stop-color="#6E7B8E"/>
+    </linearGradient>
+
+    <!-- 组件卡片渐变（白色微微立体） -->
+    <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F7F9FC"/>
+    </linearGradient>
+
+    <!-- 箭头定义 -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9AA7B8"/>
+    </marker>
+    <marker id="arrowFlow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2BB6B0"/>
+    </marker>
+
+    <!-- 卡片阴影（极淡） -->
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5"/>
+      <feOffset dx="0" dy="1.5" result="offsetblur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- 卡片模板 symbol -->
+    <symbol id="card" overflow="visible">
+      <rect x="0" y="0" rx="6" ry="6" fill="url(#cardGrad)" stroke="#DDE4EE" stroke-width="1" filter="url(#cardShadow)"/>
+    </symbol>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1480" height="1340" fill="url(#bgGrad)"/>
+
+  <!-- 标题 -->
+  <text x="740" y="48" text-anchor="middle" font-size="28" font-weight="700" fill="#1F2A3D">ShardingSphere-JDBC 整体架构图</text>
+  <text x="740" y="74" text-anchor="middle" font-size="14" fill="#6B7689">ShardingSphere-JDBC Architecture Overview · 零侵入 Java JDBC 驱动模式</text>
+  <line x1="540" y1="88" x2="940" y2="88" stroke="#C5D0DE" stroke-width="1"/>
+
+  <!-- ============ Layer 1: 应用层 ============ -->
+  <g id="layer-app">
+    <rect x="80" y="110" width="1320" height="80" rx="10" fill="#EAF2FD" stroke="#C9DCF2" stroke-width="1"/>
+    <rect x="80" y="110" width="6" height="80" rx="3" fill="url(#bar-app)"/>
+    <text x="104" y="140" font-size="14" font-weight="700" fill="#2C4768">① 应用层</text>
+    <text x="104" y="160" font-size="11" fill="#5A6B83">Application Layer · 业务系统通过标准 JDBC API 访问</text>
+
+    <g transform="translate(560,138)">
+      <rect x="0" y="0" width="360" height="38" rx="6" fill="url(#cardGrad)" stroke="#C9DCF2" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="180" y="16" text-anchor="middle" font-size="13" font-weight="600" fill="#2C4768">Business Application</text>
+      <text x="180" y="32" text-anchor="middle" font-size="11" fill="#5A6B83">Class.forName("org.apache.shardingsphere.driver.ShardingSphereDriver")</text>
+    </g>
+  </g>
+
+  <!-- 箭头 1 -> 2 -->
+  <line x1="740" y1="194" x2="740" y2="222" stroke="#9AA7B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ============ Layer 2: JDBC 驱动入口层 ============ -->
+  <g id="layer-entry">
+    <rect x="80" y="228" width="1320" height="120" rx="10" fill="#FFF5E8" stroke="#F3D9B0" stroke-width="1"/>
+    <rect x="80" y="228" width="6" height="120" rx="3" fill="url(#bar-entry)"/>
+    <text x="104" y="258" font-size="14" font-weight="700" fill="#8A5410">② JDBC 驱动入口层</text>
+    <text x="104" y="278" font-size="11" fill="#7A5828">Driver Entry Layer · SPI 注册 / URL 解析 / DataSource 构建</text>
+
+    <!-- ShardingSphereDriver -->
+    <g transform="translate(180,290)">
+      <rect x="0" y="0" width="260" height="48" rx="6" fill="url(#cardGrad)" stroke="#F3D9B0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="130" y="16" text-anchor="middle" font-size="12" font-weight="600" fill="#8A5410">ShardingSphereDriver</text>
+    </g>
+    <!-- ShardingSphereDataSourceFactory -->
+    <g transform="translate(610,290)">
+      <rect x="0" y="0" width="280" height="48" rx="6" fill="url(#cardGrad)" stroke="#F3D9B0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="140" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="#8A5410">ShardingSphereDataSourceFactory</text>
+    </g>
+    <!-- YamlJDBCConfiguration -->
+    <g transform="translate(1060,290)">
+      <rect x="0" y="0" width="240" height="48" rx="6" fill="url(#cardGrad)" stroke="#F3D9B0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="120" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="#8A5410">YamlJDBCConfiguration</text>
+    </g>
+
+    <!-- 入口子说明 -->
+    <text x="310" y="330" text-anchor="middle" font-size="10" fill="#9A7240">connect(url, props) · URL→Yaml 配置</text>
+    <text x="750" y="330" text-anchor="middle" font-size="10" fill="#9A7240">createDataSource(...) · 构建数据源</text>
+    <text x="1180" y="330" text-anchor="middle" font-size="10" fill="#9A7240">YAML 配置反序列化</text>
+  </g>
+
+  <!-- 箭头 2 -> 3 -->
+  <line x1="740" y1="348" x2="740" y2="370" stroke="#9AA7B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ============ Layer 3: JDBC 接口适配层 ============ -->
+  <g id="layer-adapter">
+    <rect x="80" y="376" width="1320" height="100" rx="10" fill="#EDF7F0" stroke="#BFE3CC" stroke-width="1"/>
+    <rect x="80" y="376" width="6" height="100" rx="3" fill="url(#bar-adapter)"/>
+    <text x="104" y="406" font-size="14" font-weight="700" fill="#1F5132">③ JDBC 接口适配层</text>
+    <text x="104" y="426" font-size="11" fill="#3A6B4D">JDBC Adapter Layer · driver/jdbc/adapter · 实现 JDK JDBC 标准接口</text>
+
+    <g transform="translate(140,438)">
+      <rect x="0" y="0" width="200" height="28" rx="6" fill="url(#cardGrad)" stroke="#BFE3CC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#1F5132">AbstractDataSourceAdapter</text>
+    </g>
+    <g transform="translate(360,438)">
+      <rect x="0" y="0" width="200" height="28" rx="6" fill="url(#cardGrad)" stroke="#BFE3CC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#1F5132">AbstractConnectionAdapter</text>
+    </g>
+    <g transform="translate(580,438)">
+      <rect x="0" y="0" width="200" height="28" rx="6" fill="url(#cardGrad)" stroke="#BFE3CC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#1F5132">AbstractStatementAdapter</text>
+    </g>
+    <g transform="translate(800,438)">
+      <rect x="0" y="0" width="240" height="28" rx="6" fill="url(#cardGrad)" stroke="#BFE3CC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="120" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#1F5132">AbstractPreparedStatementAdapter</text>
+    </g>
+    <g transform="translate(1060,438)">
+      <rect x="0" y="0" width="180" height="28" rx="6" fill="url(#cardGrad)" stroke="#BFE3CC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="90" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#1F5132">AbstractResultSetAdapter</text>
+    </g>
+    <g transform="translate(1260,438)">
+      <rect x="0" y="0" width="120" height="28" rx="6" fill="url(#cardGrad)" stroke="#BFE3CC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="60" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#1F5132">WrapperAdapter</text>
+    </g>
+  </g>
+
+  <!-- 箭头 3 -> 4 -->
+  <line x1="740" y1="480" x2="740" y2="508" stroke="#9AA7B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ============ Layer 4: JDBC 核心实现层 ============ -->
+  <g id="layer-core">
+    <rect x="80" y="514" width="1320" height="170" rx="10" fill="#EEF0FE" stroke="#C9CDF0" stroke-width="1"/>
+    <rect x="80" y="514" width="6" height="170" rx="3" fill="url(#bar-core)"/>
+    <text x="104" y="544" font-size="14" font-weight="700" fill="#3A2F8F">④ JDBC 核心实现层</text>
+    <text x="104" y="564" font-size="11" fill="#564AA0">JDBC Core Layer · driver/jdbc/core · 具体实现 Statement / Connection / ResultSet</text>
+
+    <!-- DriverState 状态管理（右侧） -->
+    <g transform="translate(1020,580)">
+      <rect x="0" y="0" width="340" height="90" rx="8" fill="#FBFAFF" stroke="#C9CDF0" stroke-width="1" stroke-dasharray="4,3" filter="url(#cardShadow)"/>
+      <text x="170" y="20" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">驱动状态管理 State</text>
+      <line x1="14" y1="28" x2="326" y2="28" stroke="#E0E4F5" stroke-width="1"/>
+      <g transform="translate(20,38)">
+        <rect x="0" y="0" width="92" height="24" rx="4" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1"/>
+        <text x="46" y="16" text-anchor="middle" font-size="10" fill="#3A2F8F">DriverState</text>
+      </g>
+      <g transform="translate(120,38)">
+        <rect x="0" y="0" width="100" height="24" rx="4" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1"/>
+        <text x="50" y="16" text-anchor="middle" font-size="10" fill="#3A2F8F">StateContext</text>
+      </g>
+      <g transform="translate(228,38)">
+        <rect x="0" y="0" width="44" height="24" rx="4" fill="#E8FBEF" stroke="#BFE3CC" stroke-width="1"/>
+        <text x="22" y="16" text-anchor="middle" font-size="10" fill="#1F5132">OK</text>
+      </g>
+      <g transform="translate(278,38)">
+        <rect x="0" y="0" width="50" height="24" rx="4" fill="#FDEEEE" stroke="#F2C9C9" stroke-width="1"/>
+        <text x="25" y="16" text-anchor="middle" font-size="10" fill="#8A2C2C">Circuit</text>
+      </g>
+      <text x="170" y="78" text-anchor="middle" font-size="10" fill="#564AA0">正常态 ↔ 熔断态切换</text>
+    </g>
+
+    <!-- DataSource -->
+    <g transform="translate(140,586)">
+      <rect x="0" y="0" width="200" height="40" rx="6" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="17" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">ShardingSphereDataSource</text>
+      <text x="100" y="32" text-anchor="middle" font-size="9" fill="#7A6FB0">getConnection() · 元数据上下文</text>
+    </g>
+    <!-- Connection -->
+    <g transform="translate(140,632)">
+      <rect x="0" y="0" width="200" height="40" rx="6" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="17" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">ShardingSphereConnection</text>
+      <text x="100" y="32" text-anchor="middle" font-size="9" fill="#7A6FB0">DriverDatabaseConnectionManager</text>
+    </g>
+    <!-- Statement -->
+    <g transform="translate(370,586)">
+      <rect x="0" y="0" width="220" height="40" rx="6" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="110" y="17" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">ShardingSphereStatement</text>
+      <text x="110" y="32" text-anchor="middle" font-size="9" fill="#7A6FB0">executeQuery / executeUpdate</text>
+    </g>
+    <!-- PreparedStatement -->
+    <g transform="translate(370,632)">
+      <rect x="0" y="0" width="220" height="40" rx="6" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="110" y="17" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">ShardingSpherePreparedStatement</text>
+      <text x="110" y="32" text-anchor="middle" font-size="9" fill="#7A6FB0">参数设置 · 预编译</text>
+    </g>
+    <!-- ResultSet -->
+    <g transform="translate(620,586)">
+      <rect x="0" y="0" width="200" height="40" rx="6" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="17" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">ShardingSphereResultSet</text>
+      <text x="100" y="32" text-anchor="middle" font-size="9" fill="#7A6FB0">合并后结果集遍历</text>
+    </g>
+    <!-- ResultSetFactory / Metadata -->
+    <g transform="translate(620,632)">
+      <rect x="0" y="0" width="200" height="40" rx="6" fill="url(#cardGrad)" stroke="#C9CDF0" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="17" text-anchor="middle" font-size="12" font-weight="700" fill="#3A2F8F">ResultSetFactory · MetaData</text>
+      <text x="100" y="32" text-anchor="middle" font-size="9" fill="#7A6FB0">GeneratedKeys / DialectConvert</text>
+    </g>
+    <!-- unsupported -->
+    <g transform="translate(850,586)">
+      <rect x="0" y="0" width="150" height="86" rx="6" fill="#F5F4FA" stroke="#D5D5E8" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="75" y="22" text-anchor="middle" font-size="11" font-weight="600" fill="#564AA0">unsupported/</text>
+      <text x="75" y="42" text-anchor="middle" font-size="9" fill="#7A6FB0">AbstractUnsupported</text>
+      <text x="75" y="56" text-anchor="middle" font-size="9" fill="#7A6FB0">Operation*</text>
+      <text x="75" y="74" text-anchor="middle" font-size="9" fill="#9A90C0">不支持的 JDBC 操作</text>
+    </g>
+  </g>
+
+  <!-- 箭头 4 -> 5 -->
+  <line x1="740" y1="688" x2="740" y2="716" stroke="#9AA7B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ============ Layer 5: 执行引擎层 ============ -->
+  <g id="layer-engine">
+    <rect x="80" y="722" width="1320" height="120" rx="10" fill="#FDEEF4" stroke="#F5C9DA" stroke-width="1"/>
+    <rect x="80" y="722" width="6" height="120" rx="3" fill="url(#bar-engine)"/>
+    <text x="104" y="752" font-size="14" font-weight="700" fill="#8A2C56">⑤ 执行引擎层</text>
+    <text x="104" y="772" font-size="11" fill="#A04A72">Execute Engine Layer · driver/executor · 驱动 SQL 执行并回调</text>
+
+    <!-- 引擎 -->
+    <g transform="translate(140,790)">
+      <rect x="0" y="0" width="200" height="42" rx="6" fill="url(#cardGrad)" stroke="#F5C9DA" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="18" text-anchor="middle" font-size="12" font-weight="700" fill="#8A2C56">DriverExecuteExecutor</text>
+      <text x="100" y="33" text-anchor="middle" font-size="9" fill="#A86A8A">执行入口</text>
+    </g>
+    <g transform="translate(360,790)">
+      <rect x="0" y="0" width="200" height="42" rx="6" fill="url(#cardGrad)" stroke="#F5C9DA" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="100" y="18" text-anchor="middle" font-size="12" font-weight="700" fill="#8A2C56">DriverExecuteQueryExecutor</text>
+      <text x="100" y="33" text-anchor="middle" font-size="9" fill="#A86A8A">查询执行</text>
+    </g>
+    <g transform="translate(580,790)">
+      <rect x="0" y="0" width="220" height="42" rx="6" fill="url(#cardGrad)" stroke="#F5C9DA" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="110" y="18" text-anchor="middle" font-size="12" font-weight="700" fill="#8A2C56">DriverExecuteUpdateExecutor</text>
+      <text x="110" y="33" text-anchor="middle" font-size="9" fill="#A86A8A">更新执行 · 影响行数</text>
+    </g>
+    <!-- 子包 -->
+    <g transform="translate(820,790)">
+      <rect x="0" y="0" width="180" height="42" rx="6" fill="url(#cardGrad)" stroke="#F5C9DA" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="90" y="18" text-anchor="middle" font-size="12" font-weight="700" fill="#8A2C56">callback/</text>
+      <text x="90" y="33" text-anchor="middle" font-size="9" fill="#A86A8A">execute · keygen · replay</text>
+    </g>
+    <g transform="translate(1020,790)">
+      <rect x="0" y="0" width="180" height="42" rx="6" fill="url(#cardGrad)" stroke="#F5C9DA" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="90" y="18" text-anchor="middle" font-size="12" font-weight="700" fill="#8A2C56">engine 子包</text>
+      <text x="90" y="33" text-anchor="middle" font-size="9" fill="#A86A8A">batch · facade · pushdown · txn</text>
+    </g>
+    <g transform="translate(1220,790)">
+      <rect x="0" y="0" width="150" height="42" rx="6" fill="#F5F0F8" stroke="#E0D0E8" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="75" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="#6A3A66">infra/executor</text>
+      <text x="75" y="33" text-anchor="middle" font-size="9" fill="#A86A8A">底层执行器协作</text>
+    </g>
+  </g>
+
+  <!-- 箭头 5 -> 6 -->
+  <line x1="740" y1="846" x2="740" y2="874" stroke="#2BB6B0" stroke-width="2" marker-end="url(#arrowFlow)"/>
+
+  <!-- ============ Layer 6: SQL 核心处理链路 ============ -->
+  <g id="layer-pipeline">
+    <rect x="80" y="880" width="1320" height="140" rx="10" fill="#E6F7F5" stroke="#B3E0DC" stroke-width="1"/>
+    <rect x="80" y="880" width="6" height="140" rx="3" fill="url(#bar-pipeline)"/>
+    <text x="104" y="910" font-size="14" font-weight="700" fill="#115A57">⑥ SQL 核心处理链路（infra 内核引擎）</text>
+    <text x="104" y="930" font-size="11" fill="#2A7773">SQL Core Pipeline · infra/{parser, binder, route, rewrite, executor, merge} · JDBC 与 Proxy 共享</text>
+
+    <!-- 流水线节点 -->
+    <g transform="translate(140,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="url(#cardGrad)" stroke="#B3E0DC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="80" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#115A57">① SQL Parser</text>
+      <text x="80" y="38" text-anchor="middle" font-size="9" fill="#2A7773">ANTLR4 词法/语法解析</text>
+      <text x="80" y="50" text-anchor="middle" font-size="9" fill="#2A7773">SQL → AST</text>
+    </g>
+    <g transform="translate(320,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="url(#cardGrad)" stroke="#B3E0DC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="80" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#115A57">② SQL Binder</text>
+      <text x="80" y="38" text-anchor="middle" font-size="9" fill="#2A7773">SQLStatementContext</text>
+      <text x="80" y="50" text-anchor="middle" font-size="9" fill="#2A7773">表/列 元数据绑定</text>
+    </g>
+    <g transform="translate(500,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="url(#cardGrad)" stroke="#B3E0DC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="80" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#115A57">③ SQL Router</text>
+      <text x="80" y="38" text-anchor="middle" font-size="9" fill="#2A7773">路由目标库表</text>
+      <text x="80" y="50" text-anchor="middle" font-size="9" fill="#2A7773">SQLRouteResult</text>
+    </g>
+    <g transform="translate(680,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="url(#cardGrad)" stroke="#B3E0DC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="80" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#115A57">④ SQL Rewriter</text>
+      <text x="80" y="38" text-anchor="middle" font-size="9" fill="#2A7773">改写为真实 SQL</text>
+      <text x="80" y="50" text-anchor="middle" font-size="9" fill="#2A7773">逻辑表→物理表</text>
+    </g>
+    <g transform="translate(860,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="url(#cardGrad)" stroke="#B3E0DC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="80" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#115A57">⑤ Executor</text>
+      <text x="80" y="38" text-anchor="middle" font-size="9" fill="#2A7773">多线程执行</text>
+      <text x="80" y="50" text-anchor="middle" font-size="9" fill="#2A7773">JDBC/SQL Driver</text>
+    </g>
+    <g transform="translate(1040,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="url(#cardGrad)" stroke="#B3E0DC" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="80" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#115A57">⑥ Merge Engine</text>
+      <text x="80" y="38" text-anchor="middle" font-size="9" fill="#2A7773">结果归并</text>
+      <text x="80" y="50" text-anchor="middle" font-size="9" fill="#2A7773">排序/分组/分页</text>
+    </g>
+    <g transform="translate(1220,940)">
+      <rect x="0" y="0" width="150" height="56" rx="8" fill="#F5FAFA" stroke="#B3E0DC" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="75" y="22" text-anchor="middle" font-size="11" font-weight="600" fill="#115A57">SQL Federation</text>
+      <text x="75" y="38" text-anchor="middle" font-size="9" fill="#2A7773">可选：复杂查询下推</text>
+      <text x="75" y="50" text-anchor="middle" font-size="9" fill="#2A7773">Apache Calcite</text>
+    </g>
+
+    <!-- 流水线小箭头 -->
+    <g stroke="#2BB6B0" stroke-width="1.6" fill="none" marker-end="url(#arrowFlow)">
+      <line x1="290" y1="968" x2="318" y2="968"/>
+      <line x1="470" y1="968" x2="498" y2="968"/>
+      <line x1="650" y1="968" x2="678" y2="968"/>
+      <line x1="830" y1="968" x2="858" y2="968"/>
+      <line x1="1010" y1="968" x2="1038" y2="968"/>
+    </g>
+    <text x="730" y="1012" text-anchor="middle" font-size="10" fill="#2A7773" font-style="italic">→ SQL 执行流水线（Parser → Binder → Router → Rewriter → Executor → Merge）</text>
+  </g>
+
+  <!-- 箭头 6 -> 7 -->
+  <line x1="740" y1="1024" x2="740" y2="1052" stroke="#9AA7B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ============ Layer 7: 特性功能层 ============ -->
+  <g id="layer-feature">
+    <rect x="80" y="1058" width="1320" height="92" rx="10" fill="#F4EFFB" stroke="#D8C7EE" stroke-width="1"/>
+    <rect x="80" y="1058" width="6" height="92" rx="3" fill="url(#bar-feature)"/>
+    <text x="104" y="1088" font-size="14" font-weight="700" fill="#523388">⑦ 特性功能层</text>
+    <text x="104" y="1108" font-size="11" fill="#6A4FA0">Features Layer · features/* · 可插拔规则，挂接到 Pipeline 各阶段</text>
+
+    <g transform="translate(150,1116)">
+      <rect x="0" y="0" width="160" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="80" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">sharding 分库分表</text>
+    </g>
+    <g transform="translate(325,1116)">
+      <rect x="0" y="0" width="180" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="90" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">readwrite-splitting 读写分离</text>
+    </g>
+    <g transform="translate(520,1116)">
+      <rect x="0" y="0" width="150" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="75" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">encrypt 加密</text>
+    </g>
+    <g transform="translate(685,1116)">
+      <rect x="0" y="0" width="150" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="75" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">mask 数据脱敏</text>
+    </g>
+    <g transform="translate(850,1116)">
+      <rect x="0" y="0" width="150" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="75" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">shadow 影子库</text>
+    </g>
+    <g transform="translate(1015,1116)">
+      <rect x="0" y="0" width="160" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="80" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">broadcast 广播表</text>
+    </g>
+    <g transform="translate(1190,1116)">
+      <rect x="0" y="0" width="180" height="24" rx="6" fill="url(#cardGrad)" stroke="#D8C7EE" stroke-width="1"/>
+      <text x="90" y="16" text-anchor="middle" font-size="11" font-weight="600" fill="#523388">pipeline 数据迁移</text>
+    </g>
+  </g>
+
+  <!-- ============ 底部：内核 + 模式 + 基础设施（并排三列） ============ -->
+  <!-- 内核层 -->
+  <g id="layer-kernel">
+    <rect x="80" y="1170" width="420" height="142" rx="10" fill="#FFF8E1" stroke="#E8D28A" stroke-width="1"/>
+    <rect x="80" y="1170" width="6" height="142" rx="3" fill="url(#bar-kernel)"/>
+    <text x="104" y="1196" font-size="13" font-weight="700" fill="#7A5800">⑧ 内核层 Kernel</text>
+    <text x="104" y="1212" font-size="10" fill="#8A6A20">kernel/* · 提供核心服务能力</text>
+
+    <g transform="translate(96,1222)">
+      <rect x="0" y="0" width="120" height="22" rx="5" fill="url(#cardGrad)" stroke="#E8D28A" stroke-width="1"/>
+      <text x="60" y="15" text-anchor="middle" font-size="10" fill="#7A5800">authority 权限</text>
+    </g>
+    <g transform="translate(222,1222)">
+      <rect x="0" y="0" width="130" height="22" rx="5" fill="url(#cardGrad)" stroke="#E8D28A" stroke-width="1"/>
+      <text x="65" y="15" text-anchor="middle" font-size="10" fill="#7A5800">transaction 事务</text>
+    </g>
+    <g transform="translate(358,1222)">
+      <rect x="0" y="0" width="130" height="22" rx="5" fill="url(#cardGrad)" stroke="#E8D28A" stroke-width="1"/>
+      <text x="65" y="15" text-anchor="middle" font-size="10" fill="#7A5800">single 单表元数据</text>
+    </g>
+    <g transform="translate(96,1250)">
+      <rect x="0" y="0" width="180" height="22" rx="5" fill="url(#cardGrad)" stroke="#E8D28A" stroke-width="1"/>
+      <text x="90" y="15" text-anchor="middle" font-size="10" fill="#7A5800">sql-federation 联邦查询</text>
+    </g>
+    <g transform="translate(282,1250)">
+      <rect x="0" y="0" width="100" height="22" rx="5" fill="url(#cardGrad)" stroke="#E8D28A" stroke-width="1"/>
+      <text x="50" y="15" text-anchor="middle" font-size="10" fill="#7A5800">global-clock</text>
+    </g>
+    <g transform="translate(388,1250)">
+      <rect x="0" y="0" width="100" height="22" rx="5" fill="url(#cardGrad)" stroke="#E8D28A" stroke-width="1"/>
+      <text x="50" y="15" text-anchor="middle" font-size="10" fill="#7A5800">schedule 调度</text>
+    </g>
+    <text x="290" y="1295" text-anchor="middle" font-size="9" fill="#8A6A20" font-style="italic">XA / BASE / LOCAL 事务 · 用户鉴权</text>
+  </g>
+
+  <!-- 配置管理模式层 -->
+  <g id="layer-mode">
+    <rect x="520" y="1170" width="420" height="142" rx="10" fill="#EAF5FB" stroke="#B3D9E8" stroke-width="1"/>
+    <rect x="520" y="1170" width="6" height="142" rx="3" fill="url(#bar-mode)"/>
+    <text x="544" y="1196" font-size="13" font-weight="700" fill="#1B5273">⑨ 配置管理模式 Mode</text>
+    <text x="544" y="1212" font-size="10" fill="#3A7A95">mode/* · 配置与元数据持久化、监听</text>
+
+    <g transform="translate(536,1222)">
+      <rect x="0" y="0" width="180" height="22" rx="5" fill="url(#cardGrad)" stroke="#B3D9E8" stroke-width="1"/>
+      <text x="90" y="15" text-anchor="middle" font-size="10" fill="#1B5273">Standalone 单机模式</text>
+    </g>
+    <g transform="translate(722,1222)">
+      <rect x="0" y="0" width="200" height="22" rx="5" fill="url(#cardGrad)" stroke="#B3D9E8" stroke-width="1"/>
+      <text x="100" y="15" text-anchor="middle" font-size="10" fill="#1B5273">Cluster 集群模式（ZK/etcd）</text>
+    </g>
+    <g transform="translate(536,1250)">
+      <rect x="0" y="0" width="120" height="22" rx="5" fill="url(#cardGrad)" stroke="#B3D9E8" stroke-width="1"/>
+      <text x="60" y="15" text-anchor="middle" font-size="10" fill="#1B5273">mode/core</text>
+    </g>
+    <g transform="translate(662,1250)">
+      <rect x="0" y="0" width="120" height="22" rx="5" fill="url(#cardGrad)" stroke="#B3D9E8" stroke-width="1"/>
+      <text x="60" y="15" text-anchor="middle" font-size="10" fill="#1B5273">mode/node</text>
+    </g>
+    <g transform="translate(788,1250)">
+      <rect x="0" y="0" width="134" height="22" rx="5" fill="url(#cardGrad)" stroke="#B3D9E8" stroke-width="1"/>
+      <text x="67" y="15" text-anchor="middle" font-size="10" fill="#1B5273">mode/spi</text>
+    </g>
+    <text x="730" y="1295" text-anchor="middle" font-size="9" fill="#3A7A95" font-style="italic">PersistRepository · 配置监听 · 元数据同步</text>
+  </g>
+
+  <!-- 基础设施层 -->
+  <g id="layer-infra">
+    <rect x="960" y="1170" width="440" height="142" rx="10" fill="#F1F3F6" stroke="#C8D0DA" stroke-width="1"/>
+    <rect x="960" y="1170" width="6" height="142" rx="3" fill="url(#bar-infra)"/>
+    <text x="984" y="1196" font-size="13" font-weight="700" fill="#3D4856">⑩ 基础设施层 Infra</text>
+    <text x="984" y="1212" font-size="10" fill="#5B6878">infra/* · 通用工具与 SPI 体系</text>
+
+    <g transform="translate(976,1222)">
+      <rect x="0" y="0" width="92" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="46" y="15" text-anchor="middle" font-size="10" fill="#3D4856">infra/spi</text>
+    </g>
+    <g transform="translate(1074,1222)">
+      <rect x="0" y="0" width="92" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="46" y="15" text-anchor="middle" font-size="10" fill="#3D4856">infra/util</text>
+    </g>
+    <g transform="translate(1172,1222)">
+      <rect x="0" y="0" width="100" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="50" y="15" text-anchor="middle" font-size="10" fill="#3D4856">infra/context</text>
+    </g>
+    <g transform="translate(1278,1222)">
+      <rect x="0" y="0" width="106" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="53" y="15" text-anchor="middle" font-size="10" fill="#3D4856">infra/session</text>
+    </g>
+    <g transform="translate(976,1250)">
+      <rect x="0" y="0" width="92" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="46" y="15" text-anchor="middle" font-size="10" fill="#3D4856">infra/url</text>
+    </g>
+    <g transform="translate(1074,1250)">
+      <rect x="0" y="0" width="100" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="50" y="15" text-anchor="middle" font-size="10" fill="#3D4856">infra/algorithm</text>
+    </g>
+    <g transform="translate(1180,1250)">
+      <rect x="0" y="0" width="120" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="60" y="15" text-anchor="middle" font-size="10" fill="#3D4856">data-source-pool</text>
+    </g>
+    <g transform="translate(1306,1250)">
+      <rect x="0" y="0" width="78" height="22" rx="5" fill="url(#cardGrad)" stroke="#C8D0DA" stroke-width="1"/>
+      <text x="39" y="15" text-anchor="middle" font-size="10" fill="#3D4856">parser/</text>
+    </g>
+    <text x="1180" y="1295" text-anchor="middle" font-size="9" fill="#5B6878" font-style="italic">SPI 加载 · 数据源连接池 · URL 解析 · 公共上下文</text>
+  </g>
+
+  <!-- 图例 -->
+  <g id="legend" transform="translate(80,1326)">
+    <text x="0" y="0" font-size="10" fill="#6B7689">图例 Legend：</text>
+    <rect x="64" y="-9" width="14" height="11" rx="2" fill="url(#cardGrad)" stroke="#DDE4EE"/>
+    <text x="84" y="0" font-size="10" fill="#6B7689">组件 / 类</text>
+    <rect x="150" y="-9" width="14" height="11" rx="2" fill="#F5F4FA" stroke="#D5D5E8" stroke-dasharray="2,2"/>
+    <text x="170" y="0" font-size="10" fill="#6B7689">辅助 / 不支持实现</text>
+    <line x1="300" y1="-4" x2="330" y2="-4" stroke="#9AA7B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="338" y="0" font-size="10" fill="#6B7689">依赖 / 调用</text>
+    <line x1="410" y1="-4" x2="440" y2="-4" stroke="#2BB6B0" stroke-width="2" marker-end="url(#arrowFlow)"/>
+    <text x="448" y="0" font-size="10" fill="#6B7689">SQL 数据流</text>
+    <text x="540" y="0" font-size="10" fill="#9AA7B8" font-style="italic">|</text>
+    <text x="555" y="0" font-size="10" fill="#6B7689">数据自上而下流转，特性功能横向插接到 Pipeline 各阶段</text>
+  </g>
+</svg>

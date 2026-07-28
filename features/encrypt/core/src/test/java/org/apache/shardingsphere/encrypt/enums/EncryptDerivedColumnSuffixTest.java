@@ -15,16 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.shardingsphere.proxy.frontend.firebird.command.query.blob.metadata;
+package org.apache.shardingsphere.encrypt.enums;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import org.apache.shardingsphere.database.connector.core.metadata.identifier.IdentifierCasePolicyFactory;
+import org.apache.shardingsphere.infra.metadata.identifier.DatabaseIdentifierContext;
+import org.junit.jupiter.api.Test;
 
-@Getter
-@RequiredArgsConstructor
-public final class FirebirdBlobColumnMetaData {
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+
+class EncryptDerivedColumnSuffixTest {
     
-    private final boolean blobColumn;
-    
-    private final Integer blobSubtype;
+    @Test
+    void assertGetDerivedColumnName() {
+        DatabaseIdentifierContext identifierContext = new DatabaseIdentifierContext(IdentifierCasePolicyFactory.newLowerCasePolicySet());
+        assertThat(EncryptDerivedColumnSuffix.CIPHER.getDerivedColumnName("foo_column", identifierContext), is("foo_column_c"));
+    }
 }

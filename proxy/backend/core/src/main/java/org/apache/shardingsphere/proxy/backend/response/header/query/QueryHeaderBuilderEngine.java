@@ -42,7 +42,7 @@ public final class QueryHeaderBuilderEngine {
     }
     
     /**
-     * Build query header builder.
+     * Build query header.
      *
      * @param resultSetMetaData result set meta data
      * @param database database
@@ -57,7 +57,7 @@ public final class QueryHeaderBuilderEngine {
     }
     
     /**
-     * Build query header builder.
+     * Build query header.
      *
      * @param sqlStatementContext SQL statement context
      * @param resultSetMetaData result set meta data
@@ -75,7 +75,7 @@ public final class QueryHeaderBuilderEngine {
     }
     
     /**
-     * Build query header builder.
+     * Build query header.
      *
      * @param sqlStatementContext SQL statement context
      * @param resultSetMetaData result set meta data
@@ -88,10 +88,11 @@ public final class QueryHeaderBuilderEngine {
     public QueryHeader build(final SQLStatementContext sqlStatementContext, final ShardingSphereResultSetMetaData resultSetMetaData, final ResultSet resultSet,
                              final ShardingSphereDatabase database, final int columnIndex) throws SQLException {
         Projection projection = findProjection(sqlStatementContext, columnIndex);
-        if (null == projection) {
-            return queryHeaderBuilder.build(resultSetMetaData, resultSet, database, resultSetMetaData.getColumnName(columnIndex), resultSetMetaData.getColumnLabel(columnIndex), columnIndex);
-        }
-        return queryHeaderBuilder.build(resultSetMetaData, resultSet, database, projection.getColumnName(), projection.getColumnLabel(), columnIndex);
+        QueryHeader result = null == projection
+                ? queryHeaderBuilder.build(resultSetMetaData, database, resultSetMetaData.getColumnName(columnIndex), resultSetMetaData.getColumnLabel(columnIndex), columnIndex)
+                : queryHeaderBuilder.build(resultSetMetaData, database, projection.getColumnName(), projection.getColumnLabel(), columnIndex);
+        queryHeaderBuilder.appendProtocolAttributes(result, resultSet);
+        return result;
     }
     
     private Projection findProjection(final SQLStatementContext sqlStatementContext, final int columnIndex) {

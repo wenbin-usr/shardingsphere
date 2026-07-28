@@ -18,8 +18,10 @@
 package org.apache.shardingsphere.test.e2e.mcp.support.distribution;
 
 import org.apache.shardingsphere.infra.util.directory.ClasspathResourceDirectoryReader;
-import org.apache.shardingsphere.mcp.api.tool.descriptor.MCPToolDescriptor;
+import org.apache.shardingsphere.mcp.api.MCPHandlerProvider;
+import org.apache.shardingsphere.mcp.api.capability.tool.MCPToolDescriptor;
 import org.apache.shardingsphere.mcp.support.descriptor.MCPDescriptorCatalogLoader;
+import org.apache.shardingsphere.test.e2e.mcp.support.fixture.plugin.PluginFixtureHandlerProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,11 +30,14 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.ServiceLoader;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItem;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,13 +66,41 @@ class PackagedDistributionPluginFixtureSupportTest {
             assertTrue(actualDescriptorDirectory.isDirectory());
             assertNotNull(jarFile.getJarEntry("META-INF/services/org.apache.shardingsphere.mcp.api.MCPHandlerProvider"));
             assertNotNull(jarFile.getJarEntry("org/apache/shardingsphere/test/e2e/mcp/support/fixture/plugin/PluginFixtureHandlerProvider.class"));
+            assertTrue(ServiceLoader.load(MCPHandlerProvider.class, classLoader).stream().anyMatch(each -> PluginFixtureHandlerProvider.class.equals(each.type())));
             assertThat(descriptorResources.toList(), hasItem(DESCRIPTOR_ENTRY));
             try {
                 currentThread.setContextClassLoader(classLoader);
-                assertThat(MCPDescriptorCatalogLoader.load().getToolDescriptors().stream().map(MCPToolDescriptor::getName).toList(), hasItem("fixture_ping"));
+                assertThat(MCPDescriptorCatalogLoader.load().getProtocolDescriptors().getToolDescriptors().stream()
+                        .map(MCPToolDescriptor::getName).toList(), hasItem("fixture_ping"));
             } finally {
                 currentThread.setContextClassLoader(originalClassLoader);
             }
         }
+    }
+    
+    @Test
+    void assertRemoveOfficialFeatureJars() throws IOException {
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-encrypt-test.jar"), "");
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-mask-test.jar"), "");
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-broadcast-test.jar"), "");
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-readwrite-splitting-test.jar"), "");
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-shadow-test.jar"), "");
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-sharding-test.jar"), "");
+        Files.writeString(tempDir.resolve("shardingsphere-mcp-feature-other-test.jar"), "");
+        List<String> actual = PackagedDistributionPluginFixtureSupport.removeOfficialFeatureJars(tempDir);
+        assertThat(actual, containsInAnyOrder(
+                "shardingsphere-mcp-feature-encrypt-test.jar",
+                "shardingsphere-mcp-feature-mask-test.jar",
+                "shardingsphere-mcp-feature-broadcast-test.jar",
+                "shardingsphere-mcp-feature-readwrite-splitting-test.jar",
+                "shardingsphere-mcp-feature-shadow-test.jar",
+                "shardingsphere-mcp-feature-sharding-test.jar"));
+        assertTrue(Files.notExists(tempDir.resolve("shardingsphere-mcp-feature-encrypt-test.jar")));
+        assertTrue(Files.notExists(tempDir.resolve("shardingsphere-mcp-feature-mask-test.jar")));
+        assertTrue(Files.notExists(tempDir.resolve("shardingsphere-mcp-feature-broadcast-test.jar")));
+        assertTrue(Files.notExists(tempDir.resolve("shardingsphere-mcp-feature-readwrite-splitting-test.jar")));
+        assertTrue(Files.notExists(tempDir.resolve("shardingsphere-mcp-feature-shadow-test.jar")));
+        assertTrue(Files.notExists(tempDir.resolve("shardingsphere-mcp-feature-sharding-test.jar")));
+        assertTrue(Files.isRegularFile(tempDir.resolve("shardingsphere-mcp-feature-other-test.jar")));
     }
 }

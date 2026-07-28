@@ -17,7 +17,6 @@
 
 package org.apache.shardingsphere.proxy.frontend.firebird.authentication;
 
-import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import io.netty.channel.ChannelHandlerContext;
 import org.apache.shardingsphere.authentication.AuthenticatorFactory;
@@ -25,6 +24,7 @@ import org.apache.shardingsphere.authentication.AuthenticatorType;
 import org.apache.shardingsphere.authentication.result.AuthenticationResult;
 import org.apache.shardingsphere.authentication.result.AuthenticationResultBuilder;
 import org.apache.shardingsphere.authority.rule.AuthorityRule;
+import org.apache.shardingsphere.database.exception.core.exception.connection.AccessDeniedException;
 import org.apache.shardingsphere.database.exception.core.exception.syntax.database.UnknownDatabaseException;
 import org.apache.shardingsphere.database.protocol.constant.CommonConstants;
 import org.apache.shardingsphere.database.protocol.firebird.constant.FirebirdAuthenticationMethod;
@@ -49,11 +49,13 @@ import org.apache.shardingsphere.proxy.frontend.connection.ConnectionIdGenerator
 import org.apache.shardingsphere.proxy.frontend.firebird.authentication.authenticator.FirebirdAuthenticatorType;
 import org.apache.shardingsphere.proxy.frontend.firebird.command.query.blob.FirebirdBlobIdGenerator;
 import org.apache.shardingsphere.proxy.frontend.firebird.command.query.blob.upload.FirebirdBlobUploadCache;
+import org.apache.shardingsphere.database.protocol.firebird.packet.command.query.batch.FirebirdBatchRegistry;
 import org.apache.shardingsphere.proxy.frontend.firebird.command.query.statement.FirebirdStatementIdGenerator;
 import org.apache.shardingsphere.proxy.frontend.firebird.command.query.statement.fetch.FirebirdFetchStatementCache;
 import org.apache.shardingsphere.proxy.frontend.firebird.command.query.transaction.FirebirdTransactionIdGenerator;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Optional;
 
 /**
@@ -70,11 +72,13 @@ public final class FirebirdAuthenticationEngine implements AuthenticationEngine 
     @Override
     public int handshake(final ChannelHandlerContext context) {
         connectionId = ConnectionIdGenerator.getInstance().nextId();
+        context.channel().attr(FirebirdConstant.CURRENT_CONNECTION).set(connectionId);
         FirebirdTransactionIdGenerator.getInstance().registerConnection(connectionId);
         FirebirdStatementIdGenerator.getInstance().registerConnection(connectionId);
         FirebirdBlobIdGenerator.getInstance().registerConnection(connectionId);
         FirebirdBlobUploadCache.getInstance().registerConnection(connectionId);
         FirebirdFetchStatementCache.getInstance().registerConnection(connectionId);
+        FirebirdBatchRegistry.getInstance().registerConnection(connectionId);
         return connectionId;
     }
     
@@ -101,7 +105,7 @@ public final class FirebirdAuthenticationEngine implements AuthenticationEngine 
         context.channel().attr(CommonConstants.CHARSET_ATTRIBUTE_KEY).set(FirebirdCharacterSets.findCharacterSet(attachPacket.getEncoding()));
         login(currentAuthResult.getDatabase(), currentAuthResult.getUsername(), attachPacket, rule);
         context.writeAndFlush(new FirebirdGenericResponsePacket());
-        return AuthenticationResultBuilder.finished(currentAuthResult.getUsername(), "", currentAuthResult.getDatabase());
+        return AuthenticationResultBuilder.finished(currentAuthResult.getUsername(), "", currentAuthResult.getDatabase(), currentAuthResult.getConnectionAttributes());
     }
     
     private void login(final String databaseName, final String username, final FirebirdAttachPacket attachPacket, final AuthorityRule rule) {
@@ -109,9 +113,10 @@ public final class FirebirdAuthenticationEngine implements AuthenticationEngine 
                 Strings.isNullOrEmpty(databaseName) || ProxyContext.getInstance().getContextManager().getMetaDataContexts().getMetaData().containsDatabase(databaseName),
                 () -> new UnknownDatabaseException(databaseName));
         Grantee grantee = new Grantee(username, "");
-        Optional<ShardingSphereUser> user = rule.findUser(grantee);
-        user.ifPresent(shardingSphereUser -> new AuthenticatorFactory<>(FirebirdAuthenticatorType.class, rule)
-                .newInstance(shardingSphereUser).authenticate(shardingSphereUser, new Object[]{attachPacket.getEncPassword(), authData, attachPacket.getAuthData()}));
+        ShardingSphereUser user = rule.findUser(grantee).orElseThrow(() -> new AccessDeniedException(username, "", true));
+        boolean authenticated = new AuthenticatorFactory<>(FirebirdAuthenticatorType.class, rule)
+                .newInstance(user).authenticate(user, new Object[]{attachPacket.getEncPassword(), authData, attachPacket.getAuthData()});
+        ShardingSpherePreconditions.checkState(authenticated, () -> new AccessDeniedException(username, "", true));
     }
     
     private AuthenticationResult processConnect(final ChannelHandlerContext context, final FirebirdPacketPayload payload, final AuthorityRule rule) {
@@ -123,7 +128,7 @@ public final class FirebirdAuthenticationEngine implements AuthenticationEngine 
         String username = connectPacket.getLogin();
         Grantee grantee = new Grantee(username, "");
         Optional<ShardingSphereUser> user = rule.findUser(grantee);
-        Preconditions.checkState(user.isPresent());
+        ShardingSpherePreconditions.checkState(user.isPresent(), () -> new AccessDeniedException(username, connectPacket.getHost(), true));
         FirebirdAuthenticationMethod plugin = FirebirdAuthenticationMethod.valueOf(getPluginName(rule, user.get()));
         FirebirdAuthenticationMethod userPlugin = connectPacket.getPlugin();
         if (plugin != userPlugin) {
@@ -133,7 +138,7 @@ public final class FirebirdAuthenticationEngine implements AuthenticationEngine 
             acceptPacket.setAcceptDataPacket(authData.getSalt(), authData.getPublicKeyHex(), plugin, 0, "");
         }
         context.writeAndFlush(acceptPacket);
-        currentAuthResult = AuthenticationResultBuilder.continued(username, connectPacket.getHost(), connectPacket.getDatabase());
+        currentAuthResult = AuthenticationResultBuilder.continued(username, connectPacket.getHost(), connectPacket.getDatabase(), Collections.emptyMap());
         return currentAuthResult;
     }
     

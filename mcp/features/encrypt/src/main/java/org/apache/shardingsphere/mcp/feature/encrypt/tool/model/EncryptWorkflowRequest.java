@@ -18,23 +18,21 @@
 package org.apache.shardingsphere.mcp.feature.encrypt.tool.model;
 
 import lombok.Getter;
+import org.apache.shardingsphere.mcp.feature.encrypt.EncryptFeatureDefinition;
+import org.apache.shardingsphere.mcp.support.workflow.model.SecretReferenceValue;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowRequest;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Encrypt workflow request.
  */
+@Getter
 public final class EncryptWorkflowRequest extends WorkflowRequest {
     
-    @Getter
     private final EncryptWorkflowOptions options = new EncryptWorkflowOptions();
     
-    /**
-     * Create a defensive copy of the encrypt workflow request.
-     *
-     * @return copied encrypt workflow request
-     */
     @Override
     public EncryptWorkflowRequest copy() {
         EncryptWorkflowRequest result = copyTo(new EncryptWorkflowRequest());
@@ -67,6 +65,21 @@ public final class EncryptWorkflowRequest extends WorkflowRequest {
         return result.isEmpty() ? super.getAlgorithmProperties(algorithmRole) : result;
     }
     
+    @Override
+    public Map<String, Map<String, SecretReferenceValue>> getSecretReferences() {
+        Map<String, Map<String, SecretReferenceValue>> result = new LinkedHashMap<>(3, 1F);
+        appendSecretReferences(result, EncryptFeatureDefinition.ALGORITHM_ROLE_PRIMARY, super.getSecretReferences(EncryptFeatureDefinition.ALGORITHM_ROLE_PRIMARY));
+        appendSecretReferences(result, EncryptFeatureDefinition.ALGORITHM_ROLE_ASSISTED_QUERY, options.getSecretReferences(EncryptFeatureDefinition.ALGORITHM_ROLE_ASSISTED_QUERY));
+        appendSecretReferences(result, EncryptFeatureDefinition.ALGORITHM_ROLE_LIKE_QUERY, options.getSecretReferences(EncryptFeatureDefinition.ALGORITHM_ROLE_LIKE_QUERY));
+        return result;
+    }
+    
+    @Override
+    public Map<String, SecretReferenceValue> getSecretReferences(final String algorithmRole) {
+        Map<String, SecretReferenceValue> result = options.getSecretReferences(algorithmRole);
+        return result.isEmpty() ? super.getSecretReferences(algorithmRole) : result;
+    }
+    
     private static EncryptWorkflowRequest copyPreviousRequest(final WorkflowRequest previousRequest) {
         if (null == previousRequest) {
             return new EncryptWorkflowRequest();
@@ -75,7 +88,14 @@ public final class EncryptWorkflowRequest extends WorkflowRequest {
             return ((EncryptWorkflowRequest) previousRequest).copy();
         }
         EncryptWorkflowRequest result = new EncryptWorkflowRequest();
-        WorkflowRequest.copyFieldsTo(previousRequest, result);
+        copyFieldsTo(previousRequest, result);
         return result;
+    }
+    
+    private void appendSecretReferences(final Map<String, Map<String, SecretReferenceValue>> target, final String algorithmRole,
+                                        final Map<String, SecretReferenceValue> secretReferences) {
+        if (!secretReferences.isEmpty()) {
+            target.put(algorithmRole, secretReferences);
+        }
     }
 }

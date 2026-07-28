@@ -17,7 +17,7 @@
 
 package org.apache.shardingsphere.mcp.bootstrap.transport.capability.tool;
 
-import org.apache.shardingsphere.mcp.api.tool.descriptor.MCPToolDescriptor;
+import org.apache.shardingsphere.mcp.api.capability.tool.MCPToolDescriptor;
 import org.apache.shardingsphere.mcp.support.descriptor.MCPDescriptorCatalogIndex;
 import org.apache.shardingsphere.mcp.support.protocol.MCPPayloadFieldNames;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowFieldNames;
@@ -45,21 +45,14 @@ final class MCPToolClarificationPolicy {
     
     private static final String FORM_PROPERTY_PREFIX = "field_";
     
-    private static final String CAMEL_CASE_SEPARATOR_PATTERN = "([a-z])([A-Z])";
-    
-    private static final String NON_ALPHANUMERIC_PATTERN = "[^a-z0-9]+";
-    
-    private static final List<String> SENSITIVE_FIELD_NAME_MARKERS = List.of(
-            "password", "passwd", "passphrase", "secret", "token", "accesstoken", "apikey", "privatekey", "credential", "card", "cvv", "payment", "key");
-    
-    boolean requiresPlanningClarification(final MCPToolDescriptor toolDescriptor, final Map<String, Object> payload) {
+    boolean requiresPlanningClarification(final MCPToolDescriptor descriptor, final Map<String, Object> payload) {
         Object clarificationQuestions = payload.get(MCPPayloadFieldNames.CLARIFICATION_QUESTIONS);
-        return MCPDescriptorCatalogIndex.findToolRuntimeDescriptor(toolDescriptor.getName())
+        return MCPDescriptorCatalogIndex.findToolRuntimeDescriptor(descriptor.getName())
                 .map(optional -> PLANNING_WORKFLOW_ROLE.equals(optional.getWorkflowRole())).orElse(false)
                 && clarificationQuestions instanceof List<?> questions && !questions.isEmpty();
     }
     
-    Optional<ClarificationForm> createClarificationForm(final Map<String, Object> payload, final MCPToolDescriptor toolDescriptor) {
+    Optional<ClarificationForm> createClarificationForm(final Map<String, Object> payload, final MCPToolDescriptor descriptor) {
         String planId = getPlanId(payload).trim();
         if (planId.isEmpty()) {
             return Optional.empty();
@@ -76,7 +69,7 @@ final class MCPToolClarificationPolicy {
             if (!(each instanceof Map<?, ?> question) || isSensitiveClarificationQuestion(question)) {
                 return Optional.empty();
             }
-            Optional<ArgumentBinding> binding = createArgumentBinding(question, toolDescriptor, questionIndex);
+            Optional<ArgumentBinding> binding = createArgumentBinding(question, descriptor, questionIndex);
             if (binding.isEmpty()) {
                 return Optional.empty();
             }
@@ -102,39 +95,22 @@ final class MCPToolClarificationPolicy {
         return false;
     }
     
-    private Optional<ArgumentBinding> createArgumentBinding(final Map<?, ?> question, final MCPToolDescriptor toolDescriptor, final int questionIndex) {
+    private Optional<ArgumentBinding> createArgumentBinding(final Map<?, ?> question, final MCPToolDescriptor descriptor, final int questionIndex) {
         String field = getField(question);
         if (field.isEmpty()) {
             return Optional.empty();
         }
         String formPropertyName = FORM_PROPERTY_PREFIX + questionIndex;
-        return findArgumentBinding(field, toolDescriptor, formPropertyName, getInputType(question), getAllowedValues(question));
+        return findArgumentBinding(field, descriptor, formPropertyName, getInputType(question), getAllowedValues(question));
     }
     
     private boolean isSensitiveClarificationQuestion(final Map<?, ?> question) {
-        return Boolean.TRUE.equals(question.get(MCPPayloadFieldNames.SECRET)) || isSecretInputType(question) || isSensitiveFieldName(question) || isUnknownAlgorithmPropertySensitivity(question);
+        Object secret = question.get(MCPPayloadFieldNames.SECRET);
+        return !(secret instanceof Boolean) || Boolean.TRUE.equals(secret) || isSecretInputType(question);
     }
     
     private boolean isSecretInputType(final Map<?, ?> question) {
         return "secret".equals(normalizeInputType(question));
-    }
-    
-    private boolean isSensitiveFieldName(final Map<?, ?> question) {
-        String fieldName = normalizeSensitiveName(getField(question));
-        for (String each : SENSITIVE_FIELD_NAME_MARKERS) {
-            if (fieldName.contains(each)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    private boolean isUnknownAlgorithmPropertySensitivity(final Map<?, ?> question) {
-        return normalizeSensitiveName(getField(question)).contains("algorithmproperties") && !question.containsKey(MCPPayloadFieldNames.SECRET);
-    }
-    
-    private String normalizeSensitiveName(final String value) {
-        return value.replaceAll(CAMEL_CASE_SEPARATOR_PATTERN, "$1 $2").toLowerCase(Locale.ENGLISH).replaceAll(NON_ALPHANUMERIC_PATTERN, "");
     }
     
     private String getPlanId(final Map<String, Object> payload) {

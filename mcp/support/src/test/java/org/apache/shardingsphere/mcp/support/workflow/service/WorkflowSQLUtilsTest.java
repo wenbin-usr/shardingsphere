@@ -17,34 +17,53 @@
 
 package org.apache.shardingsphere.mcp.support.workflow.service;
 
+import org.apache.shardingsphere.database.connector.core.metadata.identifier.IdentifierCasePolicyFactory;
+import org.apache.shardingsphere.database.connector.core.metadata.identifier.IdentifierScope;
+import org.apache.shardingsphere.infra.metadata.identifier.DatabaseIdentifierContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.List;
 import java.util.Map;
-import java.util.Properties;
+import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkflowSQLUtilsTest {
     
     @Test
-    void assertIsSafeIdentifier() {
-        assertTrue(WorkflowSQLUtils.isSafeIdentifier("orders_01"));
-    }
-    
-    @Test
     void assertCheckSafeIdentifierAllowsSafeIdentifier() {
-        assertDoesNotThrow(() -> WorkflowSQLUtils.checkSafeIdentifier("table", "orders_01"));
+        assertDoesNotThrow(() -> WorkflowSQLUtils.checkSupportedIdentifier("table", "orders_01"));
     }
     
     @Test
-    void assertCheckSafeIdentifierRejectsUnsafeIdentifier() {
-        Exception actualException = assertThrows(RuntimeException.class, () -> WorkflowSQLUtils.checkSafeIdentifier("table", "bad table"));
-        assertThat(actualException.getMessage(), is("table `bad table` contains unsupported characters. Workflow and generated SQL planning support standard unquoted identifiers only."));
+    void assertCheckSupportedIdentifierAllowsSpecialCharacterIdentifier() {
+        assertDoesNotThrow(() -> WorkflowSQLUtils.checkSupportedIdentifier("table", "bad table"));
+    }
+    
+    @Test
+    void assertCheckSupportedIdentifierRejectsLineTerminator() {
+        Exception actualException = assertThrows(RuntimeException.class, () -> WorkflowSQLUtils.checkSupportedIdentifier("table", "bad\ntable"));
+        assertThat(actualException.getMessage(), is("table `bad\ntable` contains unsupported characters that cannot be rendered as a reviewable SQL identifier."));
+    }
+    
+    @Test
+    void assertCheckSupportedIdentifierRejectsBackQuote() {
+        Exception actualException = assertThrows(RuntimeException.class, () -> WorkflowSQLUtils.checkSupportedIdentifier("table", "bad`table"));
+        assertThat(actualException.getMessage(), is("table `bad`table` contains unsupported characters that cannot be rendered as a reviewable SQL identifier."));
+    }
+    
+    @Test
+    void assertNormalizeIdentifierUnwrapsDelimitedIdentifier() {
+        assertThat(WorkflowSQLUtils.normalizeIdentifier("`bad table`"), is("bad table"));
+        assertThat(WorkflowSQLUtils.normalizeIdentifier("\"Order Detail\""), is("Order Detail"));
+        assertThat(WorkflowSQLUtils.normalizeIdentifier("[Order Detail]"), is("Order Detail"));
     }
     
     @Test
@@ -54,27 +73,95 @@ class WorkflowSQLUtilsTest {
     }
     
     @Test
+    void assertFormatDistSQLIdentifierQuotesDelimitedSafeIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier("`orders`");
+        assertThat(actualValue, is("`orders`"));
+    }
+    
+    @Test
+    void assertFormatDistSQLIdentifierQuotesReservedIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier("key");
+        assertThat(actualValue, is("`key`"));
+    }
+    
+    @Test
+    void assertFormatDistSQLIdentifierKeepsPlainIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier("rank");
+        assertThat(actualValue, is("rank"));
+    }
+    
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getDistSQLKeywordCases")
+    void assertFormatDistSQLIdentifierQuotesDistSQLKeyword(final String name, final String identifier, final String expectedValue) {
+        String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier(identifier);
+        assertThat(actualValue, is(expectedValue));
+    }
+    
+    @Test
+    void assertFormatDistSQLIdentifierKeepsMixedCaseIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier("Phone");
+        assertThat(actualValue, is("Phone"));
+    }
+    
+    @Test
     void assertFormatDistSQLIdentifierQuotesUnicodeIdentifier() {
         String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier("订单");
         assertThat(actualValue, is("`订单`"));
     }
     
     @Test
-    void assertFormatDistSQLIdentifierEscapesQuoteDelimiter() {
-        String actualValue = WorkflowSQLUtils.formatDistSQLIdentifier("bad`table");
-        assertThat(actualValue, is("`bad``table`"));
+    void assertFormatDistSQLIdentifierRejectsBackQuote() {
+        Exception actualException = assertThrows(RuntimeException.class, () -> WorkflowSQLUtils.formatDistSQLIdentifier("bad`table"));
+        assertThat(actualException.getMessage(), is("identifier `bad`table` contains unsupported characters that cannot be rendered as a reviewable SQL identifier."));
+    }
+    
+    @Test
+    void assertFormatGeneratedRuleDistSQLIdentifierQuotesSafeIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatGeneratedRuleDistSQLIdentifier("orders_01");
+        assertThat(actualValue, is("`orders_01`"));
+    }
+    
+    @Test
+    void assertFormatGeneratedRuleDistSQLIdentifierQuotesDelimitedSafeIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatGeneratedRuleDistSQLIdentifier("`orders`");
+        assertThat(actualValue, is("`orders`"));
+    }
+    
+    @Test
+    void assertFormatGeneratedRuleDistSQLIdentifierReturnsEmptyForBlankIdentifier() {
+        String actualValue = WorkflowSQLUtils.formatGeneratedRuleDistSQLIdentifier("");
+        assertThat(actualValue, is(""));
+    }
+    
+    @Test
+    void assertIsSameIdentifierWithCaseInsensitiveDatabase() {
+        assertTrue(WorkflowSQLUtils.isSameIdentifier(new DatabaseIdentifierContext(IdentifierCasePolicyFactory.newInsensitivePolicySet()), IdentifierScope.TABLE, "Phone", "phone"));
+    }
+    
+    @Test
+    void assertIsSameIdentifierFoldsPostgreSQLUnquotedIdentifier() {
+        assertTrue(WorkflowSQLUtils.isSameIdentifier(new DatabaseIdentifierContext(IdentifierCasePolicyFactory.newLowerCasePolicySet()), IdentifierScope.TABLE, "Phone", "phone"));
+    }
+    
+    @Test
+    void assertIsSameIdentifierPreservesPostgreSQLDelimitedIdentifier() {
+        assertFalse(WorkflowSQLUtils.isSameIdentifier(new DatabaseIdentifierContext(IdentifierCasePolicyFactory.newLowerCasePolicySet()), IdentifierScope.TABLE, "\"Phone\"", "phone"));
+    }
+    
+    @Test
+    void assertIsSameIdentifierRejectsUnquotedPostgreSQLQuotedName() {
+        assertFalse(WorkflowSQLUtils.isSameIdentifier(new DatabaseIdentifierContext(IdentifierCasePolicyFactory.newLowerCasePolicySet()), IdentifierScope.TABLE, "Phone", "Phone"));
+    }
+    
+    @Test
+    void assertIsSameIdentifierMatchesQuotedPostgreSQLName() {
+        assertTrue(WorkflowSQLUtils.isSameIdentifier(new DatabaseIdentifierContext(IdentifierCasePolicyFactory.newLowerCasePolicySet()), IdentifierScope.TABLE, "\"Phone\"", "Phone"));
     }
     
     @Test
     void assertEscapeLiteralEscapesSingleQuote() {
         String actualValue = WorkflowSQLUtils.escapeLiteral("O'Brien");
         assertThat(actualValue, is("O''Brien"));
-    }
-    
-    @Test
-    void assertCreatePropertiesTrimsValues() {
-        Properties actualProperties = WorkflowSQLUtils.createProperties(Map.of("aes-key-value", " 123456 "));
-        assertThat(actualProperties.getProperty("aes-key-value"), is("123456"));
     }
     
     @Test
@@ -96,36 +183,28 @@ class WorkflowSQLUtilsTest {
     }
     
     @Test
-    void assertParsePropertyEntriesSkipsMalformedEntriesAndTrimsValues() {
-        Map<String, String> actualEntries = WorkflowSQLUtils.parsePropertyEntries(List.of("aes-key-value = 123456 ", " malformed ", " iv = abc "));
-        assertThat(actualEntries.size(), is(2));
-        assertThat(actualEntries.get("aes-key-value"), is("123456"));
-        assertThat(actualEntries.get("iv"), is("abc"));
+    void assertCreateAlgorithmFragmentWithExactTypePreservesCase() {
+        String actualFragment = WorkflowSQLUtils.createAlgorithmFragmentWithExactType(" SQL_HINT ", Map.of());
+        assertThat(actualFragment, is("TYPE(NAME='SQL_HINT')"));
     }
     
-    @Test
-    void assertCreatePropertyMapReturnsEmptyForNull() {
-        Map<String, String> actualEntries = WorkflowSQLUtils.createPropertyMap(null);
-        assertThat(actualEntries, is(Map.of()));
+    private static Stream<Arguments> getDistSQLKeywordCases() {
+        return Stream.of(
+                Arguments.of("quote if keyword", "if", "`if`"),
+                Arguments.of("quote exists keyword", "exists", "`exists`"),
+                Arguments.of("quote true keyword", "true", "`true`"),
+                Arguments.of("quote false keyword", "false", "`false`"),
+                Arguments.of("quote name keyword", "name", "`name`"),
+                Arguments.of("quote cipher keyword", "cipher", "`cipher`"),
+                Arguments.of("quote order keyword", "order", "`order`"),
+                Arguments.of("quote type keyword", "type", "`type`"),
+                Arguments.of("quote table keyword", "table", "`table`"),
+                Arguments.of("quote from keyword", "from", "`from`"),
+                Arguments.of("quote properties keyword", "properties", "`properties`"),
+                Arguments.of("quote encrypt algorithm keyword", "encrypt_algorithm", "`encrypt_algorithm`"),
+                Arguments.of("quote assisted query column keyword", "assisted_query_column", "`assisted_query_column`"),
+                Arguments.of("quote mask algorithm keyword", "keep_from_x_to_y", "`keep_from_x_to_y`"),
+                Arguments.of("quote uppercase algorithm keyword", "AES", "`AES`"));
     }
     
-    @Test
-    void assertCreatePropertyMapHandlesProperties() {
-        Properties props = new Properties();
-        props.setProperty("aes-key-value", " 123456 ");
-        Map<String, String> actualEntries = WorkflowSQLUtils.createPropertyMap(props);
-        assertThat(actualEntries, is(Map.of("aes-key-value", "123456")));
-    }
-    
-    @Test
-    void assertCreatePropertyMapHandlesMap() {
-        Map<String, String> actualEntries = WorkflowSQLUtils.createPropertyMap(Map.of("aes-key-value", " 123456 "));
-        assertThat(actualEntries, is(Map.of("aes-key-value", "123456")));
-    }
-    
-    @Test
-    void assertCreatePropertyMapHandlesString() {
-        Map<String, String> actualEntries = WorkflowSQLUtils.createPropertyMap("{'aes-key-value':'123456','iv':'abc'}");
-        assertThat(actualEntries, is(Map.of("aes-key-value", "123456", "iv", "abc")));
-    }
 }

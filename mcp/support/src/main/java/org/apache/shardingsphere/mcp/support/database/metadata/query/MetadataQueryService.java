@@ -18,26 +18,24 @@
 package org.apache.shardingsphere.mcp.support.database.metadata.query;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.shardingsphere.database.connector.core.metadata.database.enums.TableType;
 import org.apache.shardingsphere.infra.exception.ShardingSpherePreconditions;
-import org.apache.shardingsphere.mcp.support.database.capability.SupportedMCPMetadataObjectType;
+import org.apache.shardingsphere.infra.metadata.database.schema.model.ShardingSphereIndex;
+import org.apache.shardingsphere.infra.metadata.database.schema.model.ShardingSphereSchema;
+import org.apache.shardingsphere.infra.metadata.database.schema.model.ShardingSphereSequence;
+import org.apache.shardingsphere.infra.metadata.database.schema.model.ShardingSphereTable;
+import org.apache.shardingsphere.mcp.api.exception.MCPUnsupportedException;
 import org.apache.shardingsphere.mcp.support.database.capability.MCPDatabaseCapability;
 import org.apache.shardingsphere.mcp.support.database.capability.MCPDatabaseCapabilityProvider;
-import org.apache.shardingsphere.mcp.support.database.spi.MCPMetadataQueryFacade;
+import org.apache.shardingsphere.mcp.support.database.capability.SupportedMCPMetadataObjectType;
 import org.apache.shardingsphere.mcp.support.database.metadata.context.RequestScopedMetadataContext;
 import org.apache.shardingsphere.mcp.support.database.metadata.jdbc.RuntimeDatabaseProfile;
 import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPColumnMetadata;
-import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPDatabaseMetadata;
-import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPIndexMetadata;
-import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPSequenceMetadata;
-import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPSchemaMetadata;
-import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPTableMetadata;
-import org.apache.shardingsphere.mcp.support.database.metadata.model.MCPViewMetadata;
-import org.apache.shardingsphere.mcp.api.protocol.exception.MCPUnsupportedException;
+import org.apache.shardingsphere.mcp.support.database.spi.MCPMetadataQueryFacade;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 
@@ -51,157 +49,69 @@ public final class MetadataQueryService implements MCPMetadataQueryFacade {
     
     private final RequestScopedMetadataContext metadataContext;
     
-    /**
-     * Query databases.
-     *
-     * @return database metadata
-     */
     @Override
-    public List<MCPDatabaseMetadata> queryDatabases() {
-        return databaseCapabilityProvider.getDatabaseProfiles().stream()
-                .map(this::createDatabaseSummary).sorted(Comparator.comparing(MCPDatabaseMetadata::getDatabase)).toList();
+    public List<RuntimeDatabaseProfile> queryDatabases() {
+        return databaseCapabilityProvider.getDatabaseProfiles().stream().sorted(Comparator.comparing(RuntimeDatabaseProfile::getDatabase)).toList();
     }
     
-    /**
-     * Query database.
-     *
-     * @param databaseName database name
-     * @return database metadata
-     */
     @Override
-    public Optional<MCPDatabaseMetadata> queryDatabase(final String databaseName) {
-        return metadataContext.loadDatabaseMetadata(databaseName).map(MCPDatabaseMetadata::createDetail);
+    public Optional<RuntimeDatabaseProfile> queryDatabase(final String databaseName) {
+        return databaseCapabilityProvider.findDatabaseProfile(databaseName);
     }
     
-    /**
-     * Query schemas.
-     *
-     * @param databaseName database name
-     * @return schema metadata
-     */
     @Override
-    public List<MCPSchemaMetadata> querySchemas(final String databaseName) {
+    public List<ShardingSphereSchema> querySchemas(final String databaseName) {
         if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.SCHEMA)) {
             return Collections.emptyList();
         }
-        return metadataContext.loadDatabaseMetadata(databaseName).map(optional -> optional.getSchemas().stream()
-                .map(MCPSchemaMetadata::createSummary).sorted(Comparator.comparing(MCPSchemaMetadata::getSchema)).toList()).orElse(Collections.emptyList());
+        return metadataContext.loadSchemas(databaseName)
+                .map(optional -> optional.stream().sorted(Comparator.comparing(ShardingSphereSchema::getName)).toList()).orElse(Collections.emptyList());
     }
     
-    /**
-     * Query schema.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @return schema metadata
-     */
     @Override
-    public Optional<MCPSchemaMetadata> querySchema(final String databaseName, final String schemaName) {
-        if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.SCHEMA)) {
-            return Optional.empty();
-        }
-        return findSchema(databaseName, schemaName).map(MCPSchemaMetadata::createDetail);
+    public Optional<ShardingSphereSchema> querySchema(final String databaseName, final String schemaName) {
+        return isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.SCHEMA) ? findSchema(databaseName, schemaName) : Optional.empty();
     }
     
-    /**
-     * Query tables.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @return table metadata
-     */
     @Override
-    public List<MCPTableMetadata> queryTables(final String databaseName, final String schemaName) {
-        if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.TABLE)) {
+    public List<ShardingSphereTable> queryTables(final String databaseName, final String schemaName) {
+        return queryTables(databaseName, schemaName, TableType.TABLE, SupportedMCPMetadataObjectType.TABLE);
+    }
+    
+    private List<ShardingSphereTable> queryTables(final String databaseName, final String schemaName, final TableType type, final SupportedMCPMetadataObjectType objectType) {
+        if (!isSupportedMetadataObjectType(databaseName, objectType)) {
             return Collections.emptyList();
         }
-        return findSchema(databaseName, schemaName).map(optional -> optional.getTables().stream()
-                .map(MCPTableMetadata::createSummary)
-                .sorted(Comparator.comparing(MCPTableMetadata::getTable))
-                .toList()).orElse(Collections.emptyList());
+        return findSchema(databaseName, schemaName)
+                .map(optional -> optional.getAllTables().stream().filter(each -> type == each.getType()).sorted(Comparator.comparing(ShardingSphereTable::getName)).toList())
+                .orElse(Collections.emptyList());
     }
     
-    /**
-     * Query table.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param tableName table name
-     * @return table metadata
-     */
     @Override
-    public Optional<MCPTableMetadata> queryTable(final String databaseName, final String schemaName, final String tableName) {
-        if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.TABLE)) {
-            return Optional.empty();
-        }
-        return findTable(databaseName, schemaName, tableName).map(MCPTableMetadata::createDetail);
+    public Optional<ShardingSphereTable> queryTable(final String databaseName, final String schemaName, final String tableName) {
+        return findTable(queryTables(databaseName, schemaName), tableName);
     }
     
-    /**
-     * Query views.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @return view metadata
-     */
     @Override
-    public List<MCPViewMetadata> queryViews(final String databaseName, final String schemaName) {
-        if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.VIEW)) {
-            return Collections.emptyList();
-        }
-        return findSchema(databaseName, schemaName).map(optional -> optional.getViews().stream()
-                .map(MCPViewMetadata::createSummary)
-                .sorted(Comparator.comparing(MCPViewMetadata::getView))
-                .toList()).orElse(Collections.emptyList());
+    public List<ShardingSphereTable> queryViews(final String databaseName, final String schemaName) {
+        return queryTables(databaseName, schemaName, TableType.VIEW, SupportedMCPMetadataObjectType.VIEW);
     }
     
-    /**
-     * Query view.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param viewName view name
-     * @return view metadata
-     */
     @Override
-    public Optional<MCPViewMetadata> queryView(final String databaseName, final String schemaName, final String viewName) {
-        if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.VIEW)) {
-            return Optional.empty();
-        }
-        return findView(databaseName, schemaName, viewName).map(MCPViewMetadata::createDetail);
+    public Optional<ShardingSphereTable> queryView(final String databaseName, final String schemaName, final String viewName) {
+        return findTable(queryViews(databaseName, schemaName), viewName);
     }
     
-    /**
-     * Query table columns.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param tableName table name
-     * @return column metadata
-     */
     @Override
     public List<MCPColumnMetadata> queryTableColumns(final String databaseName, final String schemaName, final String tableName) {
         if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.COLUMN)) {
             return Collections.emptyList();
         }
-        return findTable(databaseName, schemaName, tableName).map(optional -> sortColumns(optional.getColumns())).orElse(Collections.emptyList());
+        return queryTable(databaseName, schemaName, tableName).isEmpty()
+                ? Collections.emptyList()
+                : metadataContext.loadColumns(databaseName, schemaName, tableName).map(this::sortColumns).orElse(Collections.emptyList());
     }
     
-    private List<MCPColumnMetadata> sortColumns(final Collection<MCPColumnMetadata> columns) {
-        List<MCPColumnMetadata> result = new LinkedList<>(columns);
-        result.sort(Comparator.comparing(MCPColumnMetadata::getColumn));
-        return result;
-    }
-    
-    /**
-     * Query table column.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param tableName table name
-     * @param columnName column name
-     * @return column metadata
-     */
     @Override
     public Optional<MCPColumnMetadata> queryTableColumn(final String databaseName, final String schemaName, final String tableName, final String columnName) {
         if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.COLUMN)) {
@@ -210,31 +120,16 @@ public final class MetadataQueryService implements MCPMetadataQueryFacade {
         return findColumn(queryTableColumns(databaseName, schemaName, tableName), columnName);
     }
     
-    /**
-     * Query view columns.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param viewName view name
-     * @return column metadata
-     */
     @Override
     public List<MCPColumnMetadata> queryViewColumns(final String databaseName, final String schemaName, final String viewName) {
         if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.COLUMN)) {
             return Collections.emptyList();
         }
-        return findView(databaseName, schemaName, viewName).map(optional -> sortColumns(optional.getColumns())).orElse(Collections.emptyList());
+        return queryView(databaseName, schemaName, viewName).isEmpty()
+                ? Collections.emptyList()
+                : metadataContext.loadColumns(databaseName, schemaName, viewName).map(this::sortColumns).orElse(Collections.emptyList());
     }
     
-    /**
-     * Query view column.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param viewName view name
-     * @param columnName column name
-     * @return column metadata
-     */
     @Override
     public Optional<MCPColumnMetadata> queryViewColumn(final String databaseName, final String schemaName, final String viewName, final String columnName) {
         if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.COLUMN)) {
@@ -243,117 +138,80 @@ public final class MetadataQueryService implements MCPMetadataQueryFacade {
         return findColumn(queryViewColumns(databaseName, schemaName, viewName), columnName);
     }
     
-    /**
-     * Query indexes.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param tableName table name
-     * @return index metadata
-     */
     @Override
-    public List<MCPIndexMetadata> queryIndexes(final String databaseName, final String schemaName, final String tableName) {
+    public List<MCPColumnMetadata> querySchemaColumns(final String databaseName, final String schemaName) {
+        if (!isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.COLUMN) || querySchema(databaseName, schemaName).isEmpty()) {
+            return Collections.emptyList();
+        }
+        return metadataContext.loadSchemaColumns(databaseName, schemaName).map(this::sortColumns).orElse(Collections.emptyList());
+    }
+    
+    private List<MCPColumnMetadata> sortColumns(final Collection<MCPColumnMetadata> columns) {
+        return columns.stream().sorted(Comparator.comparing(MCPColumnMetadata::getRelationName)
+                .thenComparing(MCPColumnMetadata::getName)).toList();
+    }
+    
+    @Override
+    public List<ShardingSphereIndex> queryIndexes(final String databaseName, final String schemaName, final String tableName) {
         ShardingSpherePreconditions.checkState(isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.INDEX),
                 () -> new MCPUnsupportedException("Index resources are not supported for the current database."));
-        return findTable(databaseName, schemaName, tableName).map(optional -> sortIndexes(optional.getIndexes())).orElse(Collections.emptyList());
+        return queryTable(databaseName, schemaName, tableName).isEmpty()
+                ? Collections.emptyList()
+                : metadataContext.loadIndexes(databaseName, schemaName, tableName).map(this::sortIndexes).orElse(Collections.emptyList());
     }
     
-    private List<MCPIndexMetadata> sortIndexes(final Collection<MCPIndexMetadata> indexes) {
-        List<MCPIndexMetadata> result = new LinkedList<>(indexes);
-        result.sort(Comparator.comparing(MCPIndexMetadata::getIndex));
-        return result;
-    }
-    
-    /**
-     * Query index.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param tableName table name
-     * @param indexName index name
-     * @return index metadata
-     */
     @Override
-    public Optional<MCPIndexMetadata> queryIndex(final String databaseName, final String schemaName, final String tableName, final String indexName) {
+    public Optional<ShardingSphereIndex> queryIndex(final String databaseName, final String schemaName, final String tableName, final String indexName) {
         ShardingSpherePreconditions.checkState(isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.INDEX),
                 () -> new MCPUnsupportedException("Index resources are not supported for the current database."));
         return findIndex(queryIndexes(databaseName, schemaName, tableName), indexName);
     }
     
-    /**
-     * Query sequences.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @return sequence metadata
-     */
+    private List<ShardingSphereIndex> sortIndexes(final Collection<ShardingSphereIndex> indexes) {
+        return indexes.stream().sorted(Comparator.comparing(ShardingSphereIndex::getName)).toList();
+    }
+    
     @Override
-    public List<MCPSequenceMetadata> querySequences(final String databaseName, final String schemaName) {
+    public List<ShardingSphereSequence> querySequences(final String databaseName, final String schemaName) {
         ShardingSpherePreconditions.checkState(isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.SEQUENCE),
                 () -> new MCPUnsupportedException("Sequence resources are not supported for the current database."));
-        return findSchema(databaseName, schemaName).map(optional -> sortSequences(optional.getSequences())).orElse(Collections.emptyList());
+        return findSchema(databaseName, schemaName).map(optional -> sortSequences(optional.getAllSequences())).orElse(Collections.emptyList());
     }
     
-    private List<MCPSequenceMetadata> sortSequences(final Collection<MCPSequenceMetadata> sequences) {
-        List<MCPSequenceMetadata> result = new LinkedList<>(sequences);
-        result.sort(Comparator.comparing(MCPSequenceMetadata::getSequence));
-        return result;
-    }
-    
-    /**
-     * Query sequence.
-     *
-     * @param databaseName database name
-     * @param schemaName schema name
-     * @param sequenceName sequence name
-     * @return sequence metadata
-     */
     @Override
-    public Optional<MCPSequenceMetadata> querySequence(final String databaseName, final String schemaName, final String sequenceName) {
+    public Optional<ShardingSphereSequence> querySequence(final String databaseName, final String schemaName, final String sequenceName) {
         ShardingSpherePreconditions.checkState(isSupportedMetadataObjectType(databaseName, SupportedMCPMetadataObjectType.SEQUENCE),
                 () -> new MCPUnsupportedException("Sequence resources are not supported for the current database."));
-        return findSequence(querySequences(databaseName, schemaName), sequenceName).map(MCPSequenceMetadata::createDetail);
+        return findSequence(querySequences(databaseName, schemaName), sequenceName);
     }
     
-    private Optional<MCPSchemaMetadata> findSchema(final String databaseName, final String schemaName) {
-        return metadataContext.loadDatabaseMetadata(databaseName)
-                .flatMap(optional -> optional.getSchemas().stream().filter(each -> schemaName.equals(each.getSchema())).findFirst());
+    private List<ShardingSphereSequence> sortSequences(final Collection<ShardingSphereSequence> sequences) {
+        return sequences.stream().sorted(Comparator.comparing(ShardingSphereSequence::getName)).toList();
     }
     
-    private Optional<MCPTableMetadata> findTable(final String databaseName, final String schemaName, final String tableName) {
-        return findSchema(databaseName, schemaName).flatMap(optional -> optional.getTables().stream().filter(each -> tableName.equals(each.getTable())).findFirst());
+    private Optional<ShardingSphereSchema> findSchema(final String databaseName, final String schemaName) {
+        return metadataContext.loadSchemas(databaseName).flatMap(optional -> optional.stream().filter(each -> schemaName.equals(each.getName())).findFirst());
     }
     
-    private Optional<MCPViewMetadata> findView(final String databaseName, final String schemaName, final String viewName) {
-        return findSchema(databaseName, schemaName).flatMap(optional -> optional.getViews().stream().filter(each -> viewName.equals(each.getView())).findFirst());
+    private Optional<ShardingSphereTable> findTable(final Collection<ShardingSphereTable> tables, final String tableName) {
+        return tables.stream().filter(each -> tableName.equals(each.getName())).findFirst();
     }
     
     private Optional<MCPColumnMetadata> findColumn(final Collection<MCPColumnMetadata> columns, final String columnName) {
-        return columns.stream().filter(each -> columnName.equals(each.getColumn())).findFirst();
+        return columns.stream().filter(each -> columnName.equals(each.getName())).findFirst();
     }
     
-    private Optional<MCPIndexMetadata> findIndex(final Collection<MCPIndexMetadata> indexes, final String indexName) {
-        return indexes.stream().filter(each -> indexName.equals(each.getIndex())).findFirst();
+    private Optional<ShardingSphereIndex> findIndex(final Collection<ShardingSphereIndex> indexes, final String indexName) {
+        return indexes.stream().filter(each -> indexName.equals(each.getName())).findFirst();
     }
     
-    private Optional<MCPSequenceMetadata> findSequence(final Collection<MCPSequenceMetadata> sequences, final String sequenceName) {
-        return sequences.stream().filter(each -> sequenceName.equals(each.getSequence())).findFirst();
+    private Optional<ShardingSphereSequence> findSequence(final Collection<ShardingSphereSequence> sequences, final String sequenceName) {
+        return sequences.stream().filter(each -> sequenceName.equals(each.getName())).findFirst();
     }
     
-    /**
-     * Judge whether the metadata object type is supported for the database.
-     *
-     * @param databaseName database name
-     * @param objectType metadata object type
-     * @return supported or not
-     */
     @Override
     public boolean isSupportedMetadataObjectType(final String databaseName, final SupportedMCPMetadataObjectType objectType) {
         Optional<MCPDatabaseCapability> databaseCapability = databaseCapabilityProvider.provide(databaseName);
         return databaseCapability.isPresent() && databaseCapability.get().getSupportedMetadataObjectTypes().contains(objectType);
-    }
-    
-    private MCPDatabaseMetadata createDatabaseSummary(final RuntimeDatabaseProfile databaseProfile) {
-        return new MCPDatabaseMetadata(databaseProfile.getDatabase(), databaseProfile.getDatabaseType(), databaseProfile.getDatabaseVersion(), Collections.emptyList());
     }
 }

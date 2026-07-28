@@ -24,6 +24,7 @@ import org.apache.shardingsphere.infra.util.json.JsonUtils;
 import org.apache.shardingsphere.test.e2e.mcp.llm.config.LLME2EConfiguration;
 import org.apache.shardingsphere.test.e2e.mcp.llm.config.LLME2EConfiguration.RuntimeMode;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 
 import java.io.IOException;
@@ -34,6 +35,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -45,18 +47,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class LLMChatModelClientTest {
     
     private static final String REQUIRED_MODEL = "ggml-org/Qwen3-1.7B-GGUF:Q4_K_M";
     
+    private static final LLME2EConfiguration.ModelMetadata MODEL_METADATA = new LLME2EConfiguration.ModelMetadata(
+            "ggml-org/Qwen3-1.7B-GGUF", "Qwen3-1.7B-Q4_K_M.gguf", "Q4_K_M", "daeb8e2d528a760970442092f6bf1e55c3b659eb", "configured-model-sha256");
+    
     @Test
     void assertWaitUntilReady() throws IOException, InterruptedException {
         List<String> actualBodies = new LinkedList<>();
         HttpServer server = startModelServer(REQUIRED_MODEL, actualBodies);
         try {
-            new LLMChatModelClient(createConfiguration(createBaseUrl(server), 1), HttpClient.newHttpClient()).waitUntilReady();
+            new LLMChatModelClient(createConfiguration(createBaseUrl(server), 1, 1), HttpClient.newHttpClient()).waitUntilReady();
             assertThat(actualBodies.size(), is(4));
             assertCoreCompletionPayload(readPayload(actualBodies.get(0)));
             assertRequiredToolPayload(readPayload(actualBodies.get(1)));
@@ -70,16 +77,19 @@ class LLMChatModelClientTest {
     @Test
     void assertWaitUntilReadyReportsProbeFailure() throws IOException, InterruptedException {
         HttpClient httpClient = mock(HttpClient.class);
-        HttpResponse<String> modelListResponse = createResponse(200, "{\"data\":[{\"id\":\"ggml-org/Qwen3-1.7B-GGUF:Q4_K_M\"}]}");
+        HttpResponse<String> modelListResponse = createResponse(200, String.format("{\"data\":[{\"id\":\"%s\"}]}", REQUIRED_MODEL));
         HttpResponse<String> completionResponse = createResponse(401, "{\"error\":{\"code\":\"unauthorized\"}}");
         when(httpClient.send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
                 .thenReturn(modelListResponse, completionResponse);
         IllegalStateException actualException = assertThrows(IllegalStateException.class,
-                () -> new LLMChatModelClient(createConfiguration("http://127.0.0.1:8080/v1", 1), httpClient).waitUntilReady());
+                () -> new LLMChatModelClient(createConfiguration("http://127.0.0.1:8080/v1", 600, 300), httpClient).waitUntilReady());
         assertTrue(actualException.getMessage().startsWith(
-                "Model service is not ready for `ggml-org/Qwen3-1.7B-GGUF:Q4_K_M` after 1 readiness attempt(s), elapsedMillis="));
+                String.format("Model service is not ready for `%s` after 1 readiness attempt(s), elapsedMillis=", REQUIRED_MODEL)));
         assertTrue(actualException.getMessage().endsWith(
-                "timeoutSeconds=1. Last readiness failure: completion readiness request returned HTTP 401 with error code `unauthorized`."));
+                "timeoutSeconds=600. Last readiness failure: completion readiness request returned HTTP 401 with error code `unauthorized`."));
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(httpClient, times(2)).send(requestCaptor.capture(), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        assertThat(requestCaptor.getAllValues().get(1).timeout().orElseThrow(), is(Duration.ofSeconds(300)));
     }
     
     @Test
@@ -87,17 +97,17 @@ class LLMChatModelClientTest {
         List<String> actualBodies = new LinkedList<>();
         HttpServer server = startCompletionServer(actualBodies, createCompletionResponse("done", true));
         try {
-            LLMChatCompletion actual = new LLMChatModelClient(createConfiguration(createBaseUrl(server), 1), HttpClient.newHttpClient()).complete(
+            LLMChatCompletion actual = new LLMChatModelClient(createConfiguration(createBaseUrl(server), 1, 1), HttpClient.newHttpClient()).complete(
                     List.of(
                             LLMChatMessage.system("system"),
                             LLMChatMessage.user("user"),
-                            LLMChatMessage.assistant("", List.of(new LLMToolCall("call_0", "mcp_read_resource", "{\"uri\":\"mcp://foo\"}"))),
+                            LLMChatMessage.assistant("", List.of(new LLMToolCall("call_0", "mcp_read_resource", "{\"uri\":\"mcp://test-resource\"}"))),
                             LLMChatMessage.tool("call_0", "tool result")),
                     createToolDefinitions(), "required", true);
             assertThat(actual.getContent(), is("done"));
             assertThat(actual.getToolCalls().size(), is(1));
-            assertThat(actual.getToolCalls().get(0).getName(), is("mcp_read_resource"));
-            assertCompletePayload(readPayload(actualBodies.get(0)));
+            assertThat(actual.getToolCalls().getFirst().getName(), is("mcp_read_resource"));
+            assertCompletePayload(readPayload(actualBodies.getFirst()));
         } finally {
             server.stop(0);
         }
@@ -110,7 +120,7 @@ class LLMChatModelClientTest {
         when(httpClient.send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
                 .thenReturn(response);
         IllegalStateException actualException = assertThrows(IllegalStateException.class,
-                () -> new LLMChatModelClient(createConfiguration("http://127.0.0.1:8080/v1", 1), httpClient).complete(
+                () -> new LLMChatModelClient(createConfiguration("http://127.0.0.1:8080/v1", 1, 1), httpClient).complete(
                         List.of(LLMChatMessage.user("user")), List.of(), "", false));
         assertThat(actualException.getMessage(), is("Model completion request failed with status 500 with error code `server_error`."));
     }
@@ -157,9 +167,22 @@ class LLMChatModelClientTest {
         assertThat(messages.get(3).get("tool_call_id"), is("call_0"));
     }
     
-    private LLME2EConfiguration createConfiguration(final String baseUrl, final int readyTimeoutSeconds) {
-        return new LLME2EConfiguration(baseUrl, "openai-compatible", REQUIRED_MODEL, "mcp-llm-score", readyTimeoutSeconds, 30, 10,
-                Path.of("target/llm-e2e"), "run-id", RuntimeMode.DOCKER, "apache/shardingsphere-mcp-llm-runtime:local", "sha256:foo");
+    private LLME2EConfiguration createConfiguration(final String baseUrl, final int readyTimeoutSeconds, final int requestTimeoutSeconds) {
+        return LLME2EConfiguration.builder()
+                .baseUrl(baseUrl)
+                .modelName(REQUIRED_MODEL)
+                .apiKey("mcp-llm-score")
+                .readyTimeoutSeconds(readyTimeoutSeconds)
+                .requestTimeoutSeconds(requestTimeoutSeconds)
+                .maxTurns(10)
+                .artifactRoot(Path.of("target/llm-e2e"))
+                .runId("run-id")
+                .runtimeMode(RuntimeMode.DOCKER)
+                .serverImage("apache/shardingsphere-mcp-llm-runtime:local")
+                .baseServerImage("ghcr.io/ggml-org/llama.cpp:server-b9191")
+                .baseServerImageDigest("test-base-server-image-digest")
+                .modelMetadata(MODEL_METADATA)
+                .build();
     }
     
     private HttpServer startModelServer(final String modelName, final List<String> requestBodies) throws IOException {

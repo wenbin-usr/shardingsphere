@@ -3,13 +3,13 @@ title = "快速开始"
 weight = 1
 +++
 
-本页演示如何从源码构建 ShardingSphere-MCP，连接一个用户已准备好的 ShardingSphere-Proxy 逻辑库，并通过 HTTP 验证元数据读取和只读 SQL 查询。
+本页演示如何从源码构建 ShardingSphere-MCP，连接一个用户已准备好的 ShardingSphere-Proxy 逻辑库，并在 AI 应用中通过自然语言验证基础数据库任务。
 
 ## 前置条件
 
 - `JAVA_HOME` 或 `PATH` 中可用的 JDK 21。
 - 一个可通过 JDBC 访问的 ShardingSphere-Proxy 逻辑库。
-- `curl`，用于发送 HTTP 请求。
+- 一个支持 MCP 的 AI 应用、IDE 插件或 Agent 平台。
 
 ## 构建发行包
 
@@ -36,15 +36,15 @@ cd distribution/mcp/target/apache-shardingsphere-mcp-${version}
 
 ```yaml
 runtimeDatabases:
-  "<logic-database>":
-    databaseType: MySQL
-    jdbcUrl: "jdbc:mysql://<proxy-host>:<proxy-port>/<logic-database>"
-    username: "<proxy-username>"
-    password: "<proxy-password>"
+  "logic_db":
+    jdbcUrl: "jdbc:mysql://127.0.0.1:3307/logic_db"
+    username: "root"
+    password: ""
     driverClassName: "com.mysql.cj.jdbc.Driver"
 ```
 
-将 `<logic-database>`、`<proxy-host>`、`<proxy-port>`、`<proxy-username>` 和 `<proxy-password>` 替换为 ShardingSphere-Proxy 的实际连接信息。
+根据 ShardingSphere-Proxy 的实际连接信息调整 `logic_db`、`127.0.0.1`、`3307`、`root` 和空密码。
+MCP Server 会从 `jdbcUrl` 解析数据库类型。
 如果目标数据库驱动没有随发行包提供，请在启动前把对应 JDBC 驱动 jar 放入 `plugins/`。
 
 ## 启动 HTTP MCP Server
@@ -52,7 +52,7 @@ runtimeDatabases:
 Unix-like 系统：
 
 ```bash
-bin/start.sh > logs/mcp-http.log 2>&1 & MCP_PID=$!
+bin/start.sh > logs/mcp-http.log 2>&1 &
 ```
 
 Windows：
@@ -62,135 +62,26 @@ start "ShardingSphere MCP" cmd /c "bin\start.bat > logs\mcp-http.log 2>&1"
 ```
 
 默认配置文件是 `conf/mcp-http.yaml`，默认端点是 `http://127.0.0.1:18088/mcp`。
-Unix-like 示例会在当前终端后台启动 MCP Server，并把进程号保存到 `MCP_PID`，方便最后停止服务。
 
-## 初始化 MCP 会话
+## 接入 AI 应用
 
-```bash
-curl -i -sS http://127.0.0.1:18088/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  --data '{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl-client","version":"1.0.0"}}}'
-```
+选择一个支持 MCP 的 AI 应用、IDE 插件或 Agent 平台，并配置上一步启动的 HTTP MCP Server 地址。
 
-预期结果：
+典型客户端配置见：
 
-- 响应头包含 `MCP-Session-Id`。
-- 响应头包含 `MCP-Protocol-Version`。
+- [Codex](../client-integration/codex/)
+- [Claude Code](../client-integration/claude-code/)
 
-通知服务端客户端已完成初始化：
+其他客户端请按其自身文档配置 ShardingSphere-MCP 地址：`http://127.0.0.1:18088/mcp`。
 
-```bash
-curl -i -sS http://127.0.0.1:18088/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Session-Id: <MCP-Session-Id value>' \
-  -H 'MCP-Protocol-Version: <MCP-Protocol-Version value>' \
-  --data '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
-```
+## 通过自然语言验证
 
-预期结果：
+配置完成后，在 AI 应用中输入以下任务验证 ShardingSphere-MCP 是否可以访问目标逻辑库：
 
-- HTTP 状态码是 `202`。
-- 后续 HTTP 请求必须携带这两个响应头。
+- “查看 `logic_db` 中有哪些表。”
+- “查看 `orders` 的字段和索引。”
+- “查询 `orders` 前 10 行。”
 
-## 读取元数据资源
-
-```bash
-curl -sS http://127.0.0.1:18088/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Session-Id: <MCP-Session-Id value>' \
-  -H 'MCP-Protocol-Version: <MCP-Protocol-Version value>' \
-  --data '{"jsonrpc":"2.0","id":"resource-1","method":"resources/read","params":{"uri":"shardingsphere://databases"}}'
-```
-
-预期结果：
-
-- 响应类型是 `text/event-stream`。
-- JSON 负载位于 `data:` 行。
-- 返回内容包含 `<logic-database>` 对应的逻辑库名称。
-
-## 搜索元数据
-
-```bash
-curl -sS http://127.0.0.1:18088/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Session-Id: <MCP-Session-Id value>' \
-  -H 'MCP-Protocol-Version: <MCP-Protocol-Version value>' \
-  --data '{
-    "jsonrpc":"2.0",
-    "id":"tool-1",
-    "method":"tools/call",
-    "params":{
-      "name":"database_gateway_search_metadata",
-      "arguments":{
-        "database":"<logic-database>",
-        "query":"<metadata-keyword>",
-        "object_types":["table","view"]
-      }
-    }
-  }'
-```
-
-预期结果：
-
-- JSON 负载包含匹配到的表或视图。
-- 结果项可包含后续读取用的资源提示。
-
-## 执行只读查询
-
-```bash
-curl -sS http://127.0.0.1:18088/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Session-Id: <MCP-Session-Id value>' \
-  -H 'MCP-Protocol-Version: <MCP-Protocol-Version value>' \
-  --data '{
-    "jsonrpc":"2.0",
-    "id":"tool-2",
-    "method":"tools/call",
-    "params":{
-      "name":"database_gateway_execute_query",
-      "arguments":{
-        "database":"<logic-database>",
-        "sql":"SELECT * FROM <table-name> LIMIT 10",
-        "max_rows":10
-      }
-    }
-  }'
-```
-
-预期结果：
-
-- `result_kind` 为 `result_set`。
-- `statement_class` 为 `query`。
-- 负载包含 `columns`、`rows` 或 `row_objects`。
-
-## 关闭会话并停止服务
-
-Unix-like 系统：
-
-```bash
-curl -sS -D - -o /dev/null \
-  -X DELETE http://127.0.0.1:18088/mcp \
-  -H 'MCP-Session-Id: <MCP-Session-Id value>' \
-  -H 'MCP-Protocol-Version: <MCP-Protocol-Version value>'
-kill "${MCP_PID}"
-```
-
-Windows：
-
-```bat
-curl -sS -D - -o NUL ^
-  -X DELETE http://127.0.0.1:18088/mcp ^
-  -H "MCP-Session-Id: <MCP-Session-Id value>" ^
-  -H "MCP-Protocol-Version: <MCP-Protocol-Version value>"
-```
-
-然后在 `ShardingSphere MCP` 启动窗口按 `Ctrl+C`，或直接关闭该窗口，停止 MCP Server 进程。
-
-预期结果：
-
-- HTTP 状态码是 `200`。
+如果可以返回逻辑库、表结构或查询结果，说明 MCP Server 已经可以通过 AI 应用访问目标 ShardingSphere-Proxy 逻辑库。
+进一步的部署方式、健康检查和基础可观测入口，请参考[部署说明](../deployment/)。
+如果 AI 应用无法连接或看不到逻辑库，请查看[常见问题](../troubleshooting/)。

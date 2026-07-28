@@ -18,6 +18,7 @@
 package org.apache.shardingsphere.proxy.backend.connector;
 
 import org.apache.shardingsphere.database.connector.core.metadata.database.metadata.DialectDatabaseMetaData;
+import org.apache.shardingsphere.database.connector.core.metadata.database.metadata.option.transaction.DDLCommitPolicy;
 import org.apache.shardingsphere.database.connector.core.metadata.database.metadata.option.transaction.DialectTransactionOption;
 import org.apache.shardingsphere.database.connector.core.type.DatabaseType;
 import org.apache.shardingsphere.database.connector.core.type.DatabaseTypeRegistry;
@@ -78,13 +79,13 @@ import org.apache.shardingsphere.sql.parser.statement.core.statement.attribute.t
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.ddl.CloseStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.ddl.DDLStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dml.DMLStatement;
-import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dml.InsertStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dml.SelectStatement;
 import org.apache.shardingsphere.sqlfederation.context.SQLFederationContext;
 import org.apache.shardingsphere.transaction.api.TransactionType;
 import org.apache.shardingsphere.transaction.implicit.ImplicitTransactionCallback;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -237,7 +238,7 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
         List<ExecuteResult> executeResults = advancedExecutors.isEmpty()
                 ? proxySQLExecutor.execute(executionContext)
                 : advancedExecutors.iterator().next().execute(executionContext, contextManager, database, this);
-        if (isNeedImplicitCommit(queryContext.getSqlStatementContext().getSqlStatement())) {
+        if (isCurrentTransactionCommitRequired(queryContext.getSqlStatementContext().getSqlStatement())) {
             ProxyBackendTransactionManager transactionManager = new ProxyBackendTransactionManager(databaseConnectionManager);
             transactionManager.commit();
         }
@@ -252,15 +253,16 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
                 : processExecuteUpdate(executeResults.stream().map(UpdateResult.class::cast).collect(Collectors.toList()));
     }
     
-    private boolean isNeedImplicitCommit(final SQLStatement sqlStatement) {
+    private boolean isCurrentTransactionCommitRequired(final SQLStatement sqlStatement) {
         DialectTransactionOption transactionOption = new DatabaseTypeRegistry(sqlStatement.getDatabaseType()).getDialectDatabaseMetaData().getTransactionOption();
-        return !databaseConnectionManager.getConnectionSession().isAutoCommit() && sqlStatement instanceof DDLStatement && transactionOption.isDDLNeedImplicitCommit();
+        return !databaseConnectionManager.getConnectionSession().isAutoCommit() && sqlStatement instanceof DDLStatement
+                && DDLCommitPolicy.COMMIT_CURRENT_TRANSACTION == transactionOption.getDDLCommitPolicy();
     }
     
     private ResponseHeader doExecuteFederation() throws SQLException {
         SQLStatement sqlStatement = queryContext.getSqlStatementContext().getSqlStatement();
         DialectDatabaseMetaData dialectDatabaseMetaData = new DatabaseTypeRegistry(sqlStatement.getDatabaseType()).getDialectDatabaseMetaData();
-        boolean isReturnGeneratedKeys = sqlStatement instanceof InsertStatement && dialectDatabaseMetaData.getGeneratedKeyOption().isPresent();
+        boolean isReturnGeneratedKeys = ProxySQLExecutor.isReturnGeneratedKeys(queryContext.getSqlStatementContext(), dialectDatabaseMetaData, queryContext.getParameters());
         DatabaseType protocolType = database.getProtocolType();
         ProxyJDBCExecutorCallback callback = ProxyJDBCExecutorCallbackFactory.newInstance(driverType, protocolType, database.getResourceMetaData(),
                 sqlStatement, this, isReturnGeneratedKeys, SQLExecutorExceptionHandler.isExceptionThrown(), true);
@@ -300,8 +302,11 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
         List<QueryHeader> result = new ArrayList<>(columnCount);
         QueryHeaderBuilderEngine queryHeaderBuilderEngine = new QueryHeaderBuilderEngine(database.getProtocolType());
         ShardingSphereResultSetMetaData resultSetMetaData = new ShardingSphereResultSetMetaData(queryResultSample.getMetaData().getResultSetMetaData(), database, sqlStatementContext);
+        Optional<ResultSet> resultSetSample = cachedResultSets.stream().findFirst();
         for (int columnIndex = 1; columnIndex <= columnCount; columnIndex++) {
-            result.add(createQueryHeader(queryHeaderBuilderEngine, sqlStatementContext, resultSetMetaData, database, columnIndex));
+            result.add(resultSetSample.isPresent()
+                    ? queryHeaderBuilderEngine.build(sqlStatementContext, resultSetMetaData, resultSetSample.get(), database, columnIndex)
+                    : queryHeaderBuilderEngine.build(sqlStatementContext, resultSetMetaData, database, columnIndex));
         }
         return result;
     }
@@ -310,13 +315,6 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
         return containsDerivedProjections
                 ? ((SelectStatementContext) sqlStatementContext).getProjectionsContext().getExpandProjections().size()
                 : queryResultSample.getMetaData().getColumnCount();
-    }
-    
-    private QueryHeader createQueryHeader(final QueryHeaderBuilderEngine queryHeaderBuilderEngine, final SQLStatementContext sqlStatementContext,
-                                          final ShardingSphereResultSetMetaData resultSetMetaData, final ShardingSphereDatabase database, final int columnIndex) throws SQLException {
-        return containsDerivedProjections
-                ? queryHeaderBuilderEngine.build(((SelectStatementContext) sqlStatementContext).getProjectionsContext(), resultSetMetaData, database, columnIndex)
-                : queryHeaderBuilderEngine.build(resultSetMetaData, database, columnIndex);
     }
     
     private MergedResult mergeQuery(final List<QueryResult> queryResults) throws SQLException {
@@ -330,7 +328,9 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
                 ? ((InsertStatementContext) queryContext.getSqlStatementContext()).getGeneratedKeyContext()
                 : Optional.empty();
         Collection<Comparable<?>> autoIncrementGeneratedValues = generatedKeyContext.filter(GeneratedKeyContext::isSupportAutoIncrement)
+                .filter(GeneratedKeyContext::isGenerated)
                 .map(GeneratedKeyContext::getGeneratedValues).orElseGet(Collections::emptyList);
+        
         UpdateResponseHeader result = new UpdateResponseHeader(queryContext.getSqlStatementContext().getSqlStatement(), updateResults, autoIncrementGeneratedValues);
         if (isNeedAccumulate()) {
             result.mergeUpdateCount();
@@ -393,6 +393,9 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
     private Collection<SQLException> closeStatements() {
         Collection<SQLException> result = new LinkedList<>();
         for (Statement each : cachedStatements) {
+            if (isCachedPreparedStatement(each)) {
+                continue;
+            }
             try {
                 each.cancel();
                 each.close();
@@ -402,6 +405,10 @@ public final class StandardDatabaseProxyConnector implements DatabaseProxyConnec
         }
         cachedStatements.clear();
         return result;
+    }
+    
+    private boolean isCachedPreparedStatement(final Statement statement) {
+        return statement instanceof PreparedStatement && databaseConnectionManager.getConnectionSession().getPreparedStatementCacheContext().contains(statement);
     }
     
     private Optional<SQLException> closeSQLFederationEngine() {

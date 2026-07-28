@@ -17,6 +17,12 @@
 
 package org.apache.shardingsphere.test.e2e.mcp.llm.config;
 
+import org.apache.shardingsphere.test.e2e.env.runtime.EnvironmentPropertiesLoader;
+
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -27,32 +33,30 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.UUID;
 
 /**
  * LLM E2E configuration.
  */
-@RequiredArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Builder(toBuilder = true)
 @Getter
 public final class LLME2EConfiguration {
+    
+    public static final String MODEL_PROVIDER = "openai-compatible";
     
     private static final DateTimeFormatter RUN_ID_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ENGLISH);
     
     private static final String DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1";
     
-    private static final String DEFAULT_MODEL_NAME = "ggml-org/Qwen3-1.7B-GGUF:Q4_K_M";
+    private static final String DEFAULT_MODEL_NAME = "unsloth/Qwen3.5-9B-GGUF:Q3_K_M";
     
     private static final String DEFAULT_API_KEY = "mcp-llm-score";
     
     private static final String DEFAULT_SERVER_IMAGE = "apache/shardingsphere-mcp-llm-runtime:local";
     
-    private static final String BASE_SERVER_IMAGE_DIGEST_AMD64 = "sha256:988d2695631987e28a29d98970aaf0e979e23b843a26824abb790ac4245d1d57";
-    
-    private static final String BASE_SERVER_IMAGE_DIGEST_ARM64 = "sha256:a478a81b2606aa5bb4c5864c01894fe1d8851adad8b6710f14b9519944d013ca";
-    
     private final String baseUrl;
-    
-    private final String modelProvider;
     
     private final String modelName;
     
@@ -72,7 +76,11 @@ public final class LLME2EConfiguration {
     
     private final String serverImage;
     
+    private final String baseServerImage;
+    
     private final String baseServerImageDigest;
+    
+    private final ModelMetadata modelMetadata;
     
     /**
      * Load LLM E2E configuration.
@@ -80,20 +88,24 @@ public final class LLME2EConfiguration {
      * @return LLM E2E configuration
      */
     public static LLME2EConfiguration load() {
-        RuntimeMode runtimeMode = RuntimeMode.from(readString("mcp.llm.runtime-mode", "MCP_LLM_RUNTIME_MODE", RuntimeMode.DOCKER.getValue()));
-        return new LLME2EConfiguration(
-                normalizeBaseUrl(readString("mcp.llm.base-url", "MCP_LLM_BASE_URL", DEFAULT_BASE_URL)),
-                readString("mcp.llm.provider", "MCP_LLM_PROVIDER", "openai-compatible"),
-                readString("mcp.llm.model", "MCP_LLM_MODEL", DEFAULT_MODEL_NAME),
-                readString("mcp.llm.api-key", "MCP_LLM_API_KEY", DEFAULT_API_KEY),
-                readInteger("mcp.llm.ready-timeout-seconds", "MCP_LLM_READY_TIMEOUT_SECONDS", 600),
-                readInteger("mcp.llm.request-timeout-seconds", "MCP_LLM_REQUEST_TIMEOUT_SECONDS", 240),
-                readInteger("mcp.llm.max-turns", "MCP_LLM_MAX_TURNS", 10),
-                Paths.get(readString("mcp.llm.artifact-root", "MCP_LLM_ARTIFACT_ROOT", "target/llm-e2e")),
-                readString("mcp.llm.run-id", "MCP_LLM_RUN_ID", createDefaultRunId()),
-                runtimeMode,
-                readString("mcp.llm.server-image", "MCP_LLM_SERVER_IMAGE", DEFAULT_SERVER_IMAGE),
-                readString("mcp.llm.base-server-image-digest", "MCP_LLM_BASE_SERVER_IMAGE_DIGEST", getDefaultBaseServerImageDigest(runtimeMode)));
+        Properties props = EnvironmentPropertiesLoader.loadProperties();
+        RuntimeMode runtimeMode = RuntimeMode.from(readString(props, "mcp.llm.runtime-mode", RuntimeMode.DOCKER.getValue()));
+        ModelMetadata modelMetadata = readModelMetadata(props);
+        return LLME2EConfiguration.builder()
+                .baseUrl(normalizeBaseUrl(readString(props, "mcp.llm.base-url", DEFAULT_BASE_URL)))
+                .modelName(readString(props, "mcp.llm.model", DEFAULT_MODEL_NAME))
+                .apiKey(readString(props, "mcp.llm.api-key", DEFAULT_API_KEY))
+                .readyTimeoutSeconds(readInteger(props, "mcp.llm.ready-timeout-seconds", 600))
+                .requestTimeoutSeconds(readInteger(props, "mcp.llm.request-timeout-seconds", 600))
+                .maxTurns(readInteger(props, "mcp.llm.max-turns", 10))
+                .artifactRoot(Paths.get(readString(props, "mcp.llm.artifact-root", "target/llm-e2e")))
+                .runId(readString(props, "mcp.llm.run-id", createDefaultRunId()))
+                .runtimeMode(runtimeMode)
+                .serverImage(readString(props, "mcp.llm.server-image", DEFAULT_SERVER_IMAGE))
+                .baseServerImage(readString(props, "mcp.llm.base-server-image", ""))
+                .baseServerImageDigest(readString(props, "mcp.llm.base-server-image-digest", ""))
+                .modelMetadata(modelMetadata)
+                .build();
     }
     
     /**
@@ -110,17 +122,6 @@ public final class LLME2EConfiguration {
     }
     
     /**
-     * Create a copy with another model endpoint.
-     *
-     * @param baseUrl model endpoint base URL
-     * @return copied configuration
-     */
-    public LLME2EConfiguration withBaseUrl(final String baseUrl) {
-        return new LLME2EConfiguration(normalizeBaseUrl(baseUrl), modelProvider, modelName, apiKey, readyTimeoutSeconds, requestTimeoutSeconds, maxTurns, artifactRoot, runId,
-                runtimeMode, serverImage, baseServerImageDigest);
-    }
-    
-    /**
      * Create a copy with another model endpoint and API key.
      *
      * @param baseUrl model endpoint base URL
@@ -128,8 +129,7 @@ public final class LLME2EConfiguration {
      * @return copied configuration
      */
     public LLME2EConfiguration withModelEndpoint(final String baseUrl, final String apiKey) {
-        return new LLME2EConfiguration(normalizeBaseUrl(baseUrl), modelProvider, modelName, apiKey, readyTimeoutSeconds, requestTimeoutSeconds, maxTurns, artifactRoot, runId,
-                runtimeMode, serverImage, baseServerImageDigest);
+        return toBuilder().baseUrl(normalizeBaseUrl(baseUrl)).apiKey(apiKey).build();
     }
     
     /**
@@ -140,8 +140,7 @@ public final class LLME2EConfiguration {
      * @return copied configuration
      */
     public LLME2EConfiguration withReadinessTimeouts(final int readyTimeoutSeconds, final int requestTimeoutSeconds) {
-        return new LLME2EConfiguration(baseUrl, modelProvider, modelName, apiKey, readyTimeoutSeconds, requestTimeoutSeconds, maxTurns, artifactRoot, runId, runtimeMode,
-                serverImage, baseServerImageDigest);
+        return toBuilder().readyTimeoutSeconds(readyTimeoutSeconds).requestTimeoutSeconds(requestTimeoutSeconds).build();
     }
     
     /**
@@ -162,22 +161,48 @@ public final class LLME2EConfiguration {
         return baseUrl + "/models";
     }
     
-    private static String readString(final String propertyName, final String environmentName, final String defaultValue) {
-        String result = System.getProperty(propertyName);
-        if (null != result && !result.trim().isEmpty()) {
-            return result.trim();
-        }
-        result = System.getenv(environmentName);
+    /**
+     * Get model SHA-256 checksum.
+     *
+     * @return model SHA-256 checksum
+     */
+    public String getModelSha256() {
+        return modelMetadata.getSha256();
+    }
+    
+    private static String readString(final Properties props, final String propertyName, final String defaultValue) {
+        String result = props.getProperty(propertyName);
         return null == result || result.trim().isEmpty() ? defaultValue : result.trim();
     }
     
-    private static int readInteger(final String propertyName, final String environmentName, final int defaultValue) {
-        String result = readString(propertyName, environmentName, String.valueOf(defaultValue));
-        try {
-            return Integer.parseInt(result);
-        } catch (final NumberFormatException ignored) {
-            return defaultValue;
+    private static String readRequiredString(final Properties props, final String propertyName) {
+        String result = readString(props, propertyName, "");
+        if (result.isEmpty()) {
+            throw new IllegalStateException(String.format("MCP LLM E2E property `%s` is required.", propertyName));
         }
+        return result;
+    }
+    
+    private static int readInteger(final Properties props, final String propertyName, final int defaultValue) {
+        String result = readString(props, propertyName, String.valueOf(defaultValue));
+        try {
+            int parsedValue = Integer.parseInt(result);
+            if (parsedValue <= 0) {
+                throw new IllegalStateException(String.format("MCP LLM E2E property `%s` must be a positive integer, but was `%s`.", propertyName, result));
+            }
+            return parsedValue;
+        } catch (final NumberFormatException ex) {
+            throw new IllegalStateException(String.format("MCP LLM E2E property `%s` must be a positive integer, but was `%s`.", propertyName, result), ex);
+        }
+    }
+    
+    private static ModelMetadata readModelMetadata(final Properties props) {
+        return new ModelMetadata(
+                readRequiredString(props, "mcp.llm.model-repository"),
+                readRequiredString(props, "mcp.llm.model-file-name"),
+                readRequiredString(props, "mcp.llm.model-quantization"),
+                readRequiredString(props, "mcp.llm.model-revision"),
+                readRequiredString(props, "mcp.llm.model-sha256"));
     }
     
     private static String normalizeBaseUrl(final String baseUrl) {
@@ -188,18 +213,32 @@ public final class LLME2EConfiguration {
         return RUN_ID_FORMATTER.format(LocalDateTime.now()) + "-" + UUID.randomUUID().toString().substring(0, 8);
     }
     
-    private static String getDefaultBaseServerImageDigest(final RuntimeMode runtimeMode) {
-        return RuntimeMode.DOCKER == runtimeMode ? getDefaultBaseServerImageDigest(System.getProperty("os.arch", "")) : "";
-    }
-    
-    static String getDefaultBaseServerImageDigest(final String architecture) {
-        if ("amd64".equals(architecture) || "x86_64".equals(architecture)) {
-            return BASE_SERVER_IMAGE_DIGEST_AMD64;
+    /**
+     * LLM model metadata.
+     */
+    @RequiredArgsConstructor
+    @EqualsAndHashCode
+    @Getter
+    public static final class ModelMetadata {
+        
+        private final String repository;
+        
+        private final String fileName;
+        
+        private final String quantization;
+        
+        private final String revision;
+        
+        private final String sha256;
+        
+        /**
+         * Get model path inside the runtime container.
+         *
+         * @return model path
+         */
+        public String getContainerPath() {
+            return "/models/" + fileName;
         }
-        if ("aarch64".equals(architecture) || "arm64".equals(architecture)) {
-            return BASE_SERVER_IMAGE_DIGEST_ARM64;
-        }
-        throw new IllegalStateException(String.format("Unsupported local architecture for MCP LLM Docker score mode: %s", architecture));
     }
     
     /**

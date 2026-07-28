@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EncryptWorkflowOptionsTest {
@@ -32,19 +31,18 @@ class EncryptWorkflowOptionsTest {
         originalOptions.setRequiresDecrypt(true);
         originalOptions.setCipherColumnName("phone_cipher");
         originalOptions.getAssistedQueryAlgorithmProperties().put("digest-algorithm-name", "SHA-256");
-        final EncryptWorkflowOptions actualOptions = originalOptions.copy();
+        EncryptWorkflowOptions actualOptions = originalOptions.copy();
         originalOptions.setRequiresDecrypt(false);
         originalOptions.setCipherColumnName("phone_cipher_v2");
-        originalOptions.getAssistedQueryAlgorithmProperties().put("salt", "abc");
         assertTrue(actualOptions.getRequiresDecrypt());
         assertThat(actualOptions.getCipherColumnName(), is("phone_cipher"));
+        originalOptions.getAssistedQueryAlgorithmProperties().put("salt", "abc");
         assertThat(actualOptions.getAssistedQueryAlgorithmProperties().size(), is(1));
     }
     
     @Test
     void assertOverlayKeepsExistingValuesForBlankInputs() {
         EncryptWorkflowOptions previousOptions = new EncryptWorkflowOptions();
-        previousOptions.setAllowIndexDDL(false);
         previousOptions.setAssistedQueryAlgorithmType("MD5");
         previousOptions.setCipherColumnName("phone_cipher");
         previousOptions.getAssistedQueryAlgorithmProperties().put("digest-algorithm-name", "SHA-256");
@@ -54,7 +52,6 @@ class EncryptWorkflowOptionsTest {
         currentOptions.setCipherColumnName(null);
         currentOptions.getLikeQueryAlgorithmProperties().put("delta", "1");
         currentOptions.overlayTo(previousOptions);
-        assertFalse(previousOptions.getAllowIndexDDL());
         assertTrue(previousOptions.getRequiresLikeQuery());
         assertThat(previousOptions.getAssistedQueryAlgorithmType(), is("MD5"));
         assertThat(previousOptions.getCipherColumnName(), is("phone_cipher"));

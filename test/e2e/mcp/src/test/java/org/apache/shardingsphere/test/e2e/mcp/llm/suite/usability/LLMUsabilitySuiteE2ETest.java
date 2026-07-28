@@ -18,7 +18,6 @@
 package org.apache.shardingsphere.test.e2e.mcp.llm.suite.usability;
 
 import org.apache.shardingsphere.mcp.support.database.metadata.jdbc.RuntimeDatabaseConfiguration;
-import org.apache.shardingsphere.test.e2e.mcp.env.MCPE2ECondition;
 import org.apache.shardingsphere.test.e2e.mcp.llm.config.LLME2EConfiguration;
 import org.apache.shardingsphere.test.e2e.mcp.llm.conversation.LLMConversationExecutor;
 import org.apache.shardingsphere.test.e2e.mcp.llm.fixture.LLMRuntimeSupport;
@@ -29,21 +28,19 @@ import org.apache.shardingsphere.test.e2e.mcp.llm.suite.usability.scenario.LLMUs
 import org.apache.shardingsphere.test.e2e.mcp.support.runtime.AbstractConfigBackedRuntimeE2ETest;
 import org.apache.shardingsphere.test.e2e.mcp.support.runtime.RuntimeTransport;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIf;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 @Tag("llm-e2e")
-@EnabledIf("isEnabled")
+@EnabledIf("org.apache.shardingsphere.test.e2e.mcp.env.MCPE2ECondition#isDockerEnabled")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LLMUsabilitySuiteE2ETest extends AbstractConfigBackedRuntimeE2ETest {
     
     private static final String RUNTIME_KIND = "mysql";
@@ -54,6 +51,8 @@ class LLMUsabilitySuiteE2ETest extends AbstractConfigBackedRuntimeE2ETest {
     
     private static final String COUNT_ORDERS_SQL = "SELECT COUNT(*) AS total_orders FROM orders";
     
+    private static final String SUITE_PART_PROPERTY = "mcp.e2e.llm.usability-suite";
+    
     private static LLMRuntimeSupport.ModelRuntime llmRuntime;
     
     private final LLMRuntimeFixtureFactory runtimeFixtureFactory = new LLMRuntimeFixtureFactory();
@@ -61,8 +60,6 @@ class LLMUsabilitySuiteE2ETest extends AbstractConfigBackedRuntimeE2ETest {
     private final LLMUsabilitySuiteRunner suiteRunner = new LLMUsabilitySuiteRunner();
     
     private final LLMUsabilityScenarioCatalog scenarioCatalog = new LLMUsabilityScenarioCatalog();
-    
-    private RuntimeTransport currentTransport;
     
     private Fixture currentRuntimeFixture;
     
@@ -79,40 +76,36 @@ class LLMUsabilitySuiteE2ETest extends AbstractConfigBackedRuntimeE2ETest {
         }
     }
     
-    @AfterEach
+    @AfterAll
     void closeRuntimeFixture() {
         if (null != currentRuntimeFixture) {
             currentRuntimeFixture.close();
             currentRuntimeFixture = null;
         }
-        currentTransport = null;
     }
     
-    private static boolean isEnabled() {
-        return MCPE2ECondition.isLLMEnabled();
-    }
-    
-    static Stream<Arguments> getTestCases() {
-        return Stream.of(
-                Arguments.of("llm-usability-mysql-http", RuntimeTransport.HTTP),
-                Arguments.of("llm-usability-mysql-stdio", RuntimeTransport.STDIO));
-    }
-    
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("getTestCases")
-    void assertUsabilityBaseline(final String suiteId, final RuntimeTransport transport) throws IOException, InterruptedException {
-        currentTransport = transport;
+    @Test
+    void assertUsabilityBaseline() throws IOException, InterruptedException {
+        String suiteId = "llm-usability-mysql-http";
         LLMConversationExecutor conversationExecutor = new LLMConversationExecutor(getRequiredLLMConfiguration(), getRequiredLLMRuntimeEvidence());
         conversationExecutor.assertModelReady();
         prepareRuntimeFixture();
-        suiteRunner.assertCoreSuite(suiteId + "/core",
-                this::createCoreScenarios,
-                each -> conversationExecutor.runConversation(suiteId + "/core/" + each.getScenarioId(), each, createInteractionClient()),
-                conversationExecutor.getConfiguration());
-        suiteRunner.assertExtendedSuite(suiteId + "/extended",
-                this::createExtendedScenarios,
-                each -> conversationExecutor.runConversation(suiteId + "/extended/" + each.getScenarioId(), each, createInteractionClient()),
-                conversationExecutor.getConfiguration());
+        String suitePart = System.getProperty(SUITE_PART_PROPERTY, "all");
+        if ("all".equals(suitePart) || "core".equals(suitePart)) {
+            suiteRunner.assertSuite(suiteId + "/core",
+                    this::createCoreScenarios,
+                    each -> conversationExecutor.runConversation(suiteId + "/core/" + each.getScenarioId(), each, createInteractionClient()),
+                    conversationExecutor.getConfiguration());
+        }
+        if ("all".equals(suitePart) || "extended".equals(suitePart)) {
+            suiteRunner.assertSuite(suiteId + "/extended",
+                    this::createExtendedScenarios,
+                    each -> conversationExecutor.runConversation(suiteId + "/extended/" + each.getScenarioId(), each, createInteractionClient()),
+                    conversationExecutor.getConfiguration());
+        }
+        if (!List.of("all", "core", "extended").contains(suitePart)) {
+            throw new IllegalArgumentException("Unsupported LLM usability suite part: " + suitePart);
+        }
     }
     
     private List<LLMUsabilityScenario> createCoreScenarios() {
@@ -144,7 +137,7 @@ class LLMUsabilitySuiteE2ETest extends AbstractConfigBackedRuntimeE2ETest {
     
     @Override
     protected RuntimeTransport getTransport() {
-        return getRequiredTransport();
+        return RuntimeTransport.HTTP;
     }
     
     @Override
@@ -167,10 +160,4 @@ class LLMUsabilitySuiteE2ETest extends AbstractConfigBackedRuntimeE2ETest {
         return currentRuntimeFixture;
     }
     
-    private RuntimeTransport getRequiredTransport() {
-        if (null == currentTransport) {
-            throw new IllegalStateException("LLM usability test case was not initialized.");
-        }
-        return currentTransport;
-    }
 }

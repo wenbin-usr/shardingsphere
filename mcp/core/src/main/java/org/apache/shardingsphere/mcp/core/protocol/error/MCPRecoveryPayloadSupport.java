@@ -68,6 +68,9 @@ final class MCPRecoveryPayloadSupport {
         if ("invalid_enum_value".equals(category)) {
             return "invalid_enum";
         }
+        if ("rule_distsql_execution_failed".equals(category)) {
+            return "rule_metadata_execution";
+        }
         if ("unsafe_sql_attempted".equals(category) || "multiple_sql_statements".equals(category)) {
             return "unsafe_sql";
         }
@@ -87,6 +90,7 @@ final class MCPRecoveryPayloadSupport {
         return RuntimeDatabaseConnectionException.CATEGORY_MISSING_JDBC_DRIVER.equals(category) || RuntimeDatabaseConnectionException.CATEGORY_AUTHENTICATION_FAILED.equals(category)
                 || RuntimeDatabaseConnectionException.CATEGORY_AUTHORIZATION_FAILED.equals(category)
                 || RuntimeDatabaseConnectionException.CATEGORY_CONNECTION_TIMEOUT.equals(category) || RuntimeDatabaseConnectionException.CATEGORY_INVALID_CONFIGURATION.equals(category)
-                || RuntimeDatabaseConnectionException.CATEGORY_DATABASE_UNAVAILABLE.equals(category) || RuntimeDatabaseConnectionException.CATEGORY_CONNECTION_FAILED.equals(category);
+                || RuntimeDatabaseConnectionException.CATEGORY_DATABASE_UNAVAILABLE.equals(category)
+                || RuntimeDatabaseConnectionException.CATEGORY_CONNECTION_FAILED.equals(category);
     }
 }

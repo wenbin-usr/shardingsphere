@@ -77,7 +77,7 @@ public final class MySQLProjectionMetadataResolver {
             QueryHeaderBuilderEngine queryHeaderBuilderEngine = new QueryHeaderBuilderEngine(database.getProtocolType());
             Collection<MySQLPacket> result = new ArrayList<>(selectStatementContext.getProjectionsContext().getExpandProjections().size());
             for (int columnIndex = 1; columnIndex <= selectStatementContext.getProjectionsContext().getExpandProjections().size(); columnIndex++) {
-                QueryHeader queryHeader = queryHeaderBuilderEngine.build(selectStatementContext.getProjectionsContext(), resultSetMetaData, database, columnIndex);
+                QueryHeader queryHeader = queryHeaderBuilderEngine.build(selectStatementContext, resultSetMetaData, database, columnIndex);
                 result.add(createMySQLColumnDefinition41Packet(queryHeader, characterSet));
             }
             return result;

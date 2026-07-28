@@ -5,19 +5,40 @@ weight = 7
 chapter = true
 +++
 
-ShardingSphere-MCP is the MCP Server for Apache ShardingSphere. It can run independently and expose ShardingSphere logical database metadata, safe SQL access, and plugin workflows to MCP clients.
-ShardingSphere-MCP provides models and agents with a controlled access path to ShardingSphere logical databases.
-Through an MCP client, a model can actively discover database structure, read governance state, and call SQL tools or create reviewable governance change plans within defined boundaries. Database connections, sessions, and execution boundaries are managed by the MCP Server.
+ShardingSphere-MCP is the MCP Server for Apache ShardingSphere. It can run independently.
+MCP is an open protocol for connecting AI applications to external data sources and tools. For protocol details, see the [official MCP documentation](https://modelcontextprotocol.io/docs/learn/architecture).
 
-ShardingSphere-MCP configuration starts from databases: configure the ShardingSphere logical databases that the MCP Server can connect to, then read metadata or call SQL tools through an MCP client.
+AI application developers can integrate ShardingSphere-MCP as a controlled database access capability.
+After integration, users can inspect database structure, run controlled queries, and plan reviewable ShardingSphere rule changes through natural language.
+
+Before using database-backed capabilities, prepare a reachable database and configure its connection information in `runtimeDatabases`. If data encryption, data masking, or other rule change capabilities are required, the connection target should be a ShardingSphere-Proxy logical database.
+
+## Database Access for AI Applications
+
+ShardingSphere-MCP is designed for MCP-capable AI applications, IDE extensions, and agent platforms.
+After MCP integration, users can describe database tasks in natural language in the AI application.
+
+Common task examples:
+
+- Show the tables in `logic_db`.
+- Inspect columns, indexes, and structure for `orders`.
+- Check whether `orders` already has encryption or masking rules.
+- Plan a masking rule for `orders.phone` and preview it without execution.
+- Confirm the previous governance change plan and validate the result.
+
+Tasks with side effects should create or preview a plan first, then run only after the user reviews the changes.
 
 ## Structure
 
-- Quick Start: build the distribution, configure a reachable logical database, start the HTTP MCP Server, and verify metadata reads and read-only SQL queries.
-- Capabilities: understand the resources, tools, prompts, completions, and workflows exposed by the MCP Server.
+- Quick Start: build the distribution, configure a reachable logical database, start the MCP Server, and verify natural-language tasks in an AI application.
+- Capability Catalog: understand the database tasks and usage boundaries that users can access through natural language.
 - Configuration: configure transport, `runtimeDatabases`, plugin directories, and launch parameters.
-- Client Integration: use HTTP, STDIO, session response headers, and capability discovery calls.
-- Plugin Workflows: understand the shared planning, apply, and validation phases used by feature plugins.
-- Feature Plugins: use official MCP feature plugins.
-- Deployment: deploy the binary distribution and OCI image safely.
-- Troubleshooting: diagnose common MCP Server, transport, session, and SQL tool issues.
+- Client Integration: connect the MCP Server to an AI application through HTTP or STDIO, with Codex and Claude Code examples.
+- Deployment: deploy the binary distribution and OCI image safely, then verify health and basic runtime diagnostics.
+- Troubleshooting: diagnose common MCP Server, connection, configuration, metadata, query, and change issues.
+- Feature Plugins: use official MCP feature plugins and understand how to review, apply, and validate plugin changes.
+  - Rule Change Flow: understand confirmation, preview, execution, and validation for rule change tasks.
+  - Data Encryption: plan, apply, and validate data encryption rule changes through MCP feature plugins.
+  - Data Masking: plan, apply, and validate data masking rule changes through MCP feature plugins.
+
+For custom integration or protocol debugging, see the [Custom Integration Appendix](developer-appendix/).

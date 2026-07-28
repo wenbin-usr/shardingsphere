@@ -31,12 +31,15 @@ import org.apache.shardingsphere.mcp.bootstrap.transport.capability.tool.MCPTool
 import org.apache.shardingsphere.mcp.core.context.MCPRuntimeContext;
 import org.apache.shardingsphere.mcp.support.markdown.MCPMarkdownResourceLoader;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
  * MCP sync server factory.
  */
 public final class MCPSyncServerFactory {
+    
+    private static final Duration CLIENT_REQUEST_TIMEOUT = Duration.ofMinutes(10L);
     
     private final McpJsonMapper jsonMapper;
     
@@ -78,8 +81,9 @@ public final class MCPSyncServerFactory {
     
     private McpSyncServer create(final McpServer.SyncSpecification<?> specification) {
         return specification.jsonMapper(jsonMapper)
+                .requestTimeout(CLIENT_REQUEST_TIMEOUT)
                 .serverInfo(MCPTransportConstants.SERVER_NAME, Optional.ofNullable(MCPSyncServerFactory.class.getPackage().getImplementationVersion()).orElse("development"))
-                .instructions(loadServerInstructions())
+                .instructions(MCPMarkdownResourceLoader.load(MCPTransportConstants.SERVER_INSTRUCTIONS_RESOURCE, "server instruction"))
                 .capabilities(ServerCapabilities.builder().resources(false, false).tools(false).prompts(false).completions().build())
                 .resources(resourceSpecificationFactory.createResourceSpecifications())
                 .resourceTemplates(resourceSpecificationFactory.createResourceTemplateSpecifications())
@@ -87,9 +91,5 @@ public final class MCPSyncServerFactory {
                 .prompts(promptSpecificationFactory.createPromptSpecifications())
                 .completions(completionSpecificationFactory.createCompletionSpecifications())
                 .build();
-    }
-    
-    private String loadServerInstructions() {
-        return MCPMarkdownResourceLoader.loadRequired(MCPTransportConstants.SERVER_INSTRUCTIONS_RESOURCE, "server instruction");
     }
 }

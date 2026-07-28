@@ -17,13 +17,10 @@
 
 package org.apache.shardingsphere.mcp.feature.mask.tool.service;
 
-import org.apache.shardingsphere.mcp.api.protocol.exception.MCPInvalidRequestException;
+import org.apache.shardingsphere.mcp.api.exception.MCPInvalidRequestException;
 import org.apache.shardingsphere.mcp.support.workflow.model.RuleArtifact;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowRequest;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -36,21 +33,10 @@ class MaskRuleDistSQLPlanningServiceTest {
     
     @Test
     void assertPlanMaskRuleWithCreate() {
-        RuleArtifact actual = service.planMaskRule(createRequest("create"), List.of());
+        RuleArtifact actual = service.planMaskRule(createRequest("create"));
         assertThat(actual.getOperationType(), is("create"));
-        assertTrue(actual.getSql().startsWith("CREATE MASK RULE orders"));
+        assertTrue(actual.getSql().startsWith("CREATE MASK RULE `orders`"));
         assertTrue(actual.getSql().contains("TYPE(NAME='mask_from_x_to_y'"));
-    }
-    
-    @Test
-    void assertPlanMaskRuleWithExistingRules() {
-        RuleArtifact actual = service.planMaskRule(createRequest("alter"), List.of(
-                Map.of("column", "phone", "algorithm_type", "MD5"),
-                Map.of("column", "email", "algorithm_type", "KEEP_FIRST_N_LAST_M", "algorithm_props", "first-n=1")));
-        assertThat(actual.getOperationType(), is("alter"));
-        assertTrue(actual.getSql().startsWith("ALTER MASK RULE orders"));
-        assertTrue(actual.getSql().contains("NAME=email"));
-        assertTrue(actual.getSql().contains("NAME=phone"));
     }
     
     @Test
@@ -58,33 +44,52 @@ class MaskRuleDistSQLPlanningServiceTest {
         WorkflowRequest request = createRequest("create");
         request.setAlgorithmType("KEEP'X");
         request.getPrimaryAlgorithmProperties().put("replace-char", "x'");
-        RuleArtifact actual = service.planMaskRule(request, List.of());
+        RuleArtifact actual = service.planMaskRule(request);
         assertTrue(actual.getSql().contains("TYPE(NAME='keep''x'"));
         assertTrue(actual.getSql().contains("'replace-char'='x'''"));
     }
     
     @Test
-    void assertPlanMaskRuleRejectsUnsafeExistingColumn() {
+    void assertPlanMaskRuleFormatsSpecialCharacterIdentifiers() {
+        WorkflowRequest request = createRequest("create");
+        request.setTable("order detail");
+        request.setColumn("Phone Number");
+        RuleArtifact actual = service.planMaskRule(request);
+        assertTrue(actual.getSql().startsWith("CREATE MASK RULE `order detail`"));
+        assertTrue(actual.getSql().contains("NAME=`Phone Number`"));
+    }
+    
+    @Test
+    void assertPlanMaskRuleFormatsReservedIdentifiers() {
+        WorkflowRequest request = createRequest("create");
+        request.setTable("key");
+        RuleArtifact actual = service.planMaskRule(request);
+        assertTrue(actual.getSql().startsWith("CREATE MASK RULE `key`"));
+        assertTrue(actual.getSql().contains("NAME=`phone`"));
+    }
+    
+    @Test
+    void assertPlanMaskRuleFormatsReservedColumnIdentifier() {
+        WorkflowRequest request = createRequest("create");
+        request.setTable("table");
+        request.setColumn("from");
+        RuleArtifact actual = service.planMaskRule(request);
+        assertTrue(actual.getSql().startsWith("CREATE MASK RULE `table`"));
+        assertTrue(actual.getSql().contains("NAME=`from`"));
+    }
+    
+    @Test
+    void assertPlanMaskRuleRejectsLineTerminatorColumn() {
         MCPInvalidRequestException actualException = assertThrows(MCPInvalidRequestException.class,
-                () -> service.planMaskRule(createRequest("alter"), List.of(Map.of("column", "bad column", "algorithm_type", "MD5"))));
-        assertThat(actualException.getMessage(), is("column `bad column` contains unsupported characters. Workflow and generated SQL planning support standard unquoted identifiers only."));
+                () -> service.planMaskRule(createRequestWithColumn("bad\ncolumn")));
+        assertThat(actualException.getMessage(), is("column `bad\ncolumn` contains unsupported characters that cannot be rendered as a reviewable SQL identifier."));
     }
     
     @Test
     void assertPlanMaskDropRuleWithoutRemainingColumns() {
-        RuleArtifact actual = service.planMaskDropRule(createRequest("drop"), List.of(Map.of("column", "phone", "algorithm_type", "MD5")));
+        RuleArtifact actual = service.planMaskDropRule(createRequest("drop"));
         assertThat(actual.getOperationType(), is("drop"));
-        assertThat(actual.getSql(), is("DROP MASK RULE orders"));
-    }
-    
-    @Test
-    void assertPlanMaskDropRuleWithRemainingColumns() {
-        RuleArtifact actual = service.planMaskDropRule(createRequest("drop"), List.of(
-                Map.of("column", "phone", "algorithm_type", "MD5"),
-                Map.of("column", "email", "algorithm_type", "KEEP_FIRST_N_LAST_M")));
-        assertThat(actual.getOperationType(), is("drop"));
-        assertTrue(actual.getSql().startsWith("ALTER MASK RULE orders"));
-        assertTrue(actual.getSql().contains("NAME=email"));
+        assertThat(actual.getSql(), is("DROP MASK RULE `orders`"));
     }
     
     private WorkflowRequest createRequest(final String operationType) {
@@ -96,6 +101,12 @@ class MaskRuleDistSQLPlanningServiceTest {
         result.getPrimaryAlgorithmProperties().put("from-x", "4");
         result.getPrimaryAlgorithmProperties().put("to-y", "7");
         result.getPrimaryAlgorithmProperties().put("replace-char", "*");
+        return result;
+    }
+    
+    private WorkflowRequest createRequestWithColumn(final String columnName) {
+        WorkflowRequest result = createRequest("create");
+        result.setColumn(columnName);
         return result;
     }
 }

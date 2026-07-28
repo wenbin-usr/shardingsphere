@@ -18,8 +18,6 @@
 package org.apache.shardingsphere.mcp.support.workflow.service;
 
 import org.apache.shardingsphere.mcp.support.workflow.model.AlgorithmPropertyRequirement;
-import org.apache.shardingsphere.mcp.support.workflow.model.DDLArtifact;
-import org.apache.shardingsphere.mcp.support.workflow.model.IndexPlan;
 import org.apache.shardingsphere.mcp.support.workflow.model.RuleArtifact;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowContextSnapshot;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowRequest;
@@ -40,16 +38,12 @@ class WorkflowArtifactPayloadUtilsTest {
         request.getPrimaryAlgorithmProperties().put("aes-key-value", "123456");
         snapshot.setRequest(request);
         snapshot.getPropertyRequirements().add(new AlgorithmPropertyRequirement("primary", "aes-key-value", true, true, "AES key.", ""));
-        snapshot.getDdlArtifacts().add(new DDLArtifact("add-column", "ALTER TABLE t ADD COLUMN c_cipher VARCHAR(32)", 1));
-        snapshot.getIndexPlans().add(new IndexPlan("idx_t_c_cipher", "c_cipher", "lookup", "CREATE INDEX idx_t_c_cipher ON t(c_cipher)"));
         snapshot.getRuleArtifacts().add(new RuleArtifact("create", "CREATE ENCRYPT RULE t (PROPERTIES('aes-key-value'='123456'))"));
         Map<String, Object> actual = WorkflowArtifactPayloadUtils.createArtifactPayload(snapshot, snapshot.getRequest());
-        assertThat(((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_DDL_ARTIFACTS)).size(), is(1));
-        assertThat(((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_INDEX_PLAN)).size(), is(1));
         assertThat(((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_DISTSQL_ARTIFACTS)).size(), is(1));
-        assertThat(((Map<?, ?>) ((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_DISTSQL_ARTIFACTS)).get(0)).get("sql"),
+        assertThat(((Map<?, ?>) ((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_DISTSQL_ARTIFACTS)).getFirst()).get("sql"),
                 is("CREATE ENCRYPT RULE t (PROPERTIES('aes-key-value'='******'))"));
-        Map<?, ?> actualRedaction = (Map<?, ?>) ((Map<?, ?>) ((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_DISTSQL_ARTIFACTS)).get(0)).get("redaction");
+        Map<?, ?> actualRedaction = (Map<?, ?>) ((Map<?, ?>) ((List<?>) actual.get(WorkflowArtifactPayloadUtils.PAYLOAD_KEY_DISTSQL_ARTIFACTS)).getFirst()).get("redaction");
         assertThat(actualRedaction.get("marker"), is("******"));
         assertThat(actualRedaction.get("redacted_count"), is(1));
         assertThat(actualRedaction.get("redacted_properties"), is(List.of("primary.aes-key-value")));

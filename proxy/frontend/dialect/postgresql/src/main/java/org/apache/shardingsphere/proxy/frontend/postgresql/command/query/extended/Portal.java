@@ -49,11 +49,13 @@ import org.apache.shardingsphere.proxy.backend.response.header.ResponseHeader;
 import org.apache.shardingsphere.proxy.backend.response.header.query.QueryHeader;
 import org.apache.shardingsphere.proxy.backend.response.header.query.QueryResponseHeader;
 import org.apache.shardingsphere.proxy.backend.response.header.update.UpdateResponseHeader;
+import org.apache.shardingsphere.proxy.backend.postgresql.response.header.query.PostgreSQLQueryHeaderBuilder;
 import org.apache.shardingsphere.proxy.frontend.postgresql.command.query.PostgreSQLCommand;
 import org.apache.shardingsphere.sql.parser.statement.core.segment.dal.VariableAssignSegment;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.SQLStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dal.EmptyStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dal.SetStatement;
+import org.apache.shardingsphere.sql.parser.statement.postgresql.dal.PostgreSQLResetParameterStatement;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -65,6 +67,10 @@ import java.util.List;
  * PostgreSQL portal.
  */
 public final class Portal {
+    
+    private static final String CLIENT_ENCODING = "client_encoding";
+    
+    private static final String UTF8 = "UTF8";
     
     @Getter
     private final String name;
@@ -131,7 +137,11 @@ public final class Portal {
         int columnIndex = 0;
         for (QueryHeader each : queryResponseHeader.getQueryHeaders()) {
             PostgreSQLValueFormat valueFormat = determineValueFormat(columnIndex);
-            result.add(new PostgreSQLColumnDescription(each.getColumnLabel(), ++columnIndex, each.getColumnType(), each.getColumnLength(), each.getColumnTypeName(), valueFormat.getCode()));
+            int currentColumnIndex = ++columnIndex;
+            Integer typeOID = (Integer) each.getProtocolAttributes().get(PostgreSQLQueryHeaderBuilder.TYPE_OID);
+            result.add(PostgreSQLValueFormat.TEXT == valueFormat && null != typeOID
+                    ? new PostgreSQLColumnDescription(each.getColumnLabel(), currentColumnIndex, typeOID, each.getColumnLength(), valueFormat.getCode())
+                    : new PostgreSQLColumnDescription(each.getColumnLabel(), currentColumnIndex, each.getColumnType(), each.getColumnLength(), each.getColumnTypeName(), valueFormat.getCode()));
         }
         return result;
     }
@@ -153,6 +163,10 @@ public final class Portal {
             result.addAll(createParameterStatusResponse((SetStatement) sqlStatement));
             return result;
         }
+        if (responseHeader instanceof UpdateResponseHeader && sqlStatement instanceof PostgreSQLResetParameterStatement) {
+            result.addAll(createParameterStatusResponse((PostgreSQLResetParameterStatement) sqlStatement));
+            return result;
+        }
         result.add(createExecutionCompletedPacket(maxRows > 0 && maxRows == result.size(), result.size()));
         return result;
     }
@@ -161,9 +175,24 @@ public final class Portal {
         List<PostgreSQLPacket> result = new ArrayList<>(2);
         result.add(new PostgreSQLCommandCompletePacket("SET", 0L));
         for (VariableAssignSegment each : sqlStatement.getVariableAssigns()) {
-            result.add(new PostgreSQLParameterStatusPacket(each.getVariable().getVariable(), null == each.getAssignValue() ? null : QuoteCharacter.unwrapText(each.getAssignValue())));
+            String variableName = each.getVariable().getVariable();
+            String variableValue = isClientEncodingVariable(variableName) ? UTF8 : null == each.getAssignValue() ? null : QuoteCharacter.unwrapText(each.getAssignValue());
+            result.add(new PostgreSQLParameterStatusPacket(variableName, variableValue));
         }
         return result;
+    }
+    
+    private List<PostgreSQLPacket> createParameterStatusResponse(final PostgreSQLResetParameterStatement sqlStatement) {
+        List<PostgreSQLPacket> result = new ArrayList<>(2);
+        result.add(new PostgreSQLCommandCompletePacket("RESET", 0L));
+        if (isClientEncodingVariable(sqlStatement.getConfigurationParameter())) {
+            result.add(new PostgreSQLParameterStatusPacket(CLIENT_ENCODING, UTF8));
+        }
+        return result;
+    }
+    
+    private boolean isClientEncodingVariable(final String variableName) {
+        return CLIENT_ENCODING.equalsIgnoreCase(variableName);
     }
     
     private boolean hasNext() throws SQLException {

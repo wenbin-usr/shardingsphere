@@ -19,6 +19,7 @@ package org.apache.shardingsphere.proxy.frontend.firebird.command.query.statemen
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.SneakyThrows;
 import org.apache.shardingsphere.proxy.backend.handler.ProxyBackendHandler;
 
 import java.util.LinkedHashMap;
@@ -61,7 +62,10 @@ public final class FirebirdFetchStatementCache {
      * @param proxyBackendHandler proxy backend handler
      */
     public void registerStatement(final int connectionId, final int statementId, final ProxyBackendHandler proxyBackendHandler) {
-        statementRegistry.get(connectionId).put(statementId, proxyBackendHandler);
+        Map<Integer, ProxyBackendHandler> statements = statementRegistry.get(connectionId);
+        if (null != statements) {
+            statements.put(statementId, proxyBackendHandler);
+        }
     }
     
     /**
@@ -72,7 +76,8 @@ public final class FirebirdFetchStatementCache {
      * @return fetch response packets
      */
     public ProxyBackendHandler getFetchBackendHandler(final int connectionId, final int statementId) {
-        return statementRegistry.get(connectionId).get(statementId);
+        Map<Integer, ProxyBackendHandler> statements = statementRegistry.get(connectionId);
+        return null == statements ? null : statements.get(statementId);
     }
     
     /**
@@ -82,7 +87,10 @@ public final class FirebirdFetchStatementCache {
      * @param statementId statement ID
      */
     public void unregisterStatement(final int connectionId, final int statementId) {
-        statementRegistry.get(connectionId).remove(statementId);
+        Map<Integer, ProxyBackendHandler> statements = statementRegistry.get(connectionId);
+        if (null != statements) {
+            statements.remove(statementId);
+        }
     }
     
     /**
@@ -90,7 +98,14 @@ public final class FirebirdFetchStatementCache {
      *
      * @param connectionId connection ID
      */
+    @SneakyThrows
     public void unregisterConnection(final int connectionId) {
-        statementRegistry.remove(connectionId);
+        Map<Integer, ProxyBackendHandler> statements = statementRegistry.remove(connectionId);
+        if (null == statements) {
+            return;
+        }
+        for (ProxyBackendHandler each : statements.values()) {
+            each.close();
+        }
     }
 }

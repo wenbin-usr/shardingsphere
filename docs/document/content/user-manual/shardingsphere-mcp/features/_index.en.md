@@ -5,12 +5,15 @@ chapter = true
 +++
 
 ShardingSphere-MCP extends domain capabilities through feature plugins.
-When a feature plugin needs a multi-step governance change, it uses [Plugin Workflows](../workflow/) for planning, preview, apply, and validation phases.
+When a feature plugin needs a multi-step governance change, it uses the [Rule Change Flow](plugin-workflow/) for requirement confirmation, preview, apply, and validation.
 
 The packaged distribution includes these official MCP feature plugins:
 
-- Data Encryption: plan, apply, and validate data encryption rules.
-- Data Masking: plan, apply, and validate data masking rules.
+- Data Encryption: plan, review, apply, and validate data encryption rules.
+- Data Masking: plan, review, apply, and validate data masking rules.
+- Broadcast: plan, review, apply, and validate broadcast table rules.
+- Readwrite-Splitting: plan, review, apply, and validate readwrite-splitting rules and status changes.
+- Shadow: plan, review, apply, and validate shadow rules, default shadow algorithms, and unused algorithm cleanup.
+- Sharding: plan, review, apply, and validate sharding table rules, reference rules, default strategies, key generation, and unused component cleanup.
 
-Additional or third-party feature plugins can be added to the runtime classpath through the `plugins/` directory.
-If a feature plugin is not packaged by default, prepare its required ShardingSphere modules and third-party jars before startup.
+When using additional feature plugins, follow the plugin provider's instructions, prepare the required jars and dependencies, and place them under the distribution `plugins/` directory before startup.

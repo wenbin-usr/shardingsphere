@@ -21,6 +21,7 @@ import lombok.Getter;
 import org.apache.shardingsphere.database.connector.core.metadata.database.enums.QuoteCharacter;
 import org.apache.shardingsphere.database.connector.core.type.DatabaseType;
 import org.apache.shardingsphere.database.protocol.packet.DatabasePacket;
+import org.apache.shardingsphere.database.protocol.postgresql.constant.PostgreSQLValueFormat;
 import org.apache.shardingsphere.database.protocol.postgresql.packet.PostgreSQLPacket;
 import org.apache.shardingsphere.database.protocol.postgresql.packet.command.query.PostgreSQLColumnDescription;
 import org.apache.shardingsphere.database.protocol.postgresql.packet.command.query.PostgreSQLDataRowPacket;
@@ -38,6 +39,7 @@ import org.apache.shardingsphere.proxy.backend.response.header.query.QueryHeader
 import org.apache.shardingsphere.proxy.backend.response.header.query.QueryResponseHeader;
 import org.apache.shardingsphere.proxy.backend.response.header.update.UpdateResponseHeader;
 import org.apache.shardingsphere.proxy.backend.session.ConnectionSession;
+import org.apache.shardingsphere.proxy.backend.postgresql.response.header.query.PostgreSQLQueryHeaderBuilder;
 import org.apache.shardingsphere.proxy.frontend.command.executor.QueryCommandExecutor;
 import org.apache.shardingsphere.proxy.frontend.command.executor.ResponseType;
 import org.apache.shardingsphere.proxy.frontend.postgresql.command.PortalContext;
@@ -48,6 +50,7 @@ import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dal.Em
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dal.SetStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.tcl.CommitStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.tcl.RollbackStatement;
+import org.apache.shardingsphere.sql.parser.statement.postgresql.dal.PostgreSQLResetParameterStatement;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -59,6 +62,10 @@ import java.util.LinkedList;
  * Command query executor for PostgreSQL.
  */
 public final class PostgreSQLComQueryExecutor implements QueryCommandExecutor {
+    
+    private static final String CLIENT_ENCODING = "client_encoding";
+    
+    private static final String UTF8 = "UTF8";
     
     private final PortalContext portalContext;
     
@@ -93,7 +100,11 @@ public final class PostgreSQLComQueryExecutor implements QueryCommandExecutor {
         Collection<PostgreSQLColumnDescription> result = new LinkedList<>();
         int columnIndex = 0;
         for (QueryHeader each : queryResponseHeader.getQueryHeaders()) {
-            result.add(new PostgreSQLColumnDescription(each.getColumnLabel(), ++columnIndex, each.getColumnType(), each.getColumnLength(), each.getColumnTypeName()));
+            int currentColumnIndex = ++columnIndex;
+            Integer typeOID = (Integer) each.getProtocolAttributes().get(PostgreSQLQueryHeaderBuilder.TYPE_OID);
+            result.add(null == typeOID
+                    ? new PostgreSQLColumnDescription(each.getColumnLabel(), currentColumnIndex, each.getColumnType(), each.getColumnLength(), each.getColumnTypeName())
+                    : new PostgreSQLColumnDescription(each.getColumnLabel(), currentColumnIndex, typeOID, each.getColumnLength(), PostgreSQLValueFormat.TEXT.getCode()));
         }
         return result;
     }
@@ -106,6 +117,9 @@ public final class PostgreSQLComQueryExecutor implements QueryCommandExecutor {
         if (sqlStatement instanceof SetStatement) {
             return createParameterStatusResponse((SetStatement) sqlStatement);
         }
+        if (sqlStatement instanceof PostgreSQLResetParameterStatement) {
+            return createParameterStatusResponse((PostgreSQLResetParameterStatement) sqlStatement);
+        }
         return Collections.singletonList(sqlStatement instanceof EmptyStatement
                 ? new PostgreSQLEmptyQueryResponsePacket()
                 : new PostgreSQLCommandCompletePacket(PostgreSQLCommand.valueOf(sqlStatement.getClass()).map(PostgreSQLCommand::getTag).orElse(""), updateResponseHeader.getUpdateCount()));
@@ -115,9 +129,24 @@ public final class PostgreSQLComQueryExecutor implements QueryCommandExecutor {
         Collection<DatabasePacket> result = new ArrayList<>(2);
         result.add(new PostgreSQLCommandCompletePacket("SET", 0L));
         for (VariableAssignSegment each : sqlStatement.getVariableAssigns()) {
-            result.add(new PostgreSQLParameterStatusPacket(each.getVariable().getVariable(), null == each.getAssignValue() ? null : QuoteCharacter.unwrapText(each.getAssignValue())));
+            String variableName = each.getVariable().getVariable();
+            String variableValue = isClientEncodingVariable(variableName) ? UTF8 : null == each.getAssignValue() ? null : QuoteCharacter.unwrapText(each.getAssignValue());
+            result.add(new PostgreSQLParameterStatusPacket(variableName, variableValue));
         }
         return result;
+    }
+    
+    private Collection<DatabasePacket> createParameterStatusResponse(final PostgreSQLResetParameterStatement sqlStatement) {
+        Collection<DatabasePacket> result = new ArrayList<>(2);
+        result.add(new PostgreSQLCommandCompletePacket("RESET", 0L));
+        if (isClientEncodingVariable(sqlStatement.getConfigurationParameter())) {
+            result.add(new PostgreSQLParameterStatusPacket(CLIENT_ENCODING, UTF8));
+        }
+        return result;
+    }
+    
+    private boolean isClientEncodingVariable(final String variableName) {
+        return CLIENT_ENCODING.equalsIgnoreCase(variableName);
     }
     
     @Override

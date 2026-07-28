@@ -3,139 +3,100 @@ title = "Capability Catalog"
 weight = 2
 +++
 
-This page explains the core capabilities of ShardingSphere-MCP and how protocol methods, resource URIs, tools, and prompts relate to each other.
-The documentation explains capability semantics. Clients should use MCP list methods and `shardingsphere://capabilities` to read what the current MCP Server actually exposes.
+This page describes the database tasks that users can complete through natural language, and the usage boundaries when connecting to ShardingSphere-Proxy or using a direct database connection.
 
-## Capability discovery
-
-The following entries include MCP protocol methods and ShardingSphere-MCP resource URIs.
-`tools/list`, `resources/list`, `resources/read`, `prompts/list`, and `completion/complete` are MCP JSON-RPC method names.
-`shardingsphere://...` is the ShardingSphere-MCP resource URI prefix.
-Method names, tool names, and prompt names do not use a URI prefix. Only resource URIs and resource templates use it.
-
-| Method or resource | Type | Purpose |
-| --- | --- | --- |
-| `tools/list` | MCP protocol method | Lists callable tools. |
-| `tools/call` | MCP protocol method | Calls one tool by tool name. |
-| `resources/list` | MCP protocol method | Lists descriptors for resources that can be read without template arguments. It does not return resource content. |
-| `resources/templates/list` | MCP protocol method | Lists parameterized resource URI templates. Clients fill the template first. |
-| `resources/read` | MCP protocol method | Reads the content of one concrete resource URI. Reading `shardingsphere://capabilities` returns the ShardingSphere domain capability catalog. |
-| `prompts/list` | MCP protocol method | Lists available prompts. |
-| `prompts/get` | MCP protocol method | Reads one prompt and generates messages from its arguments. |
-| `completion/complete` | MCP protocol method | Gets completion candidates for resources, prompts, or arguments. |
-| `shardingsphere://capabilities` | ShardingSphere-MCP resource URI | Reads the ShardingSphere domain capability catalog. |
-
-Capability discovery returns the protocol surface of the current MCP Server. Whether a capability is actually useful still depends on whether `runtimeDatabases` connects to ShardingSphere-Proxy or to a regular database.
-Clients should read `shardingsphere://runtime` and `shardingsphere://databases/{database}/capabilities` before deciding which resources to read or which tools to call.
+## Connection Targets
 
 ### Connecting to ShardingSphere-Proxy
 
-Use this mode when a model needs to understand ShardingSphere logical database structure, read governance rule state, execute controlled SQL, or create reviewable governance change plans through feature plugins.
-In this mode, logical metadata, logical SQL, DistSQL, rule state, algorithm plugins, and plugin workflows can be used through MCP capabilities.
+Use this mode to inspect ShardingSphere logical database structure, read rule state, run controlled SQL, or create reviewable rule change plans.
 
-Usage limits:
+Available tasks include:
 
-- Physical metadata follows what Proxy exposes and should not be treated as the complete catalog of every underlying physical database.
-- Capabilities that depend on ShardingSphere rules, algorithms, or DistSQL apply only to Proxy connections.
-- Planning capabilities create reviewable plans. Business impact still needs to be reviewed before execution.
+- Inspecting logical databases, schemas, tables, views, columns, indexes, sequences, storage units, and single table mappings.
+- Searching metadata objects such as tables, views, columns, indexes, and storage units.
+- Running read-only SQL queries.
+- Previewing SQL that may change data, metadata, or rules.
+- Planning, reviewing, applying, and validating official DistSQL-only rule changes for data encryption, data masking, broadcast, readwrite-splitting, shadow, and sharding.
 
-### Connecting directly to a database
+Usage boundaries:
 
-Use this mode when the MCP Server should act as a controlled access path to a regular database for reading JDBC metadata, searching objects, assisting query generation, or executing restricted SQL.
-In this mode, general database metadata and SQL tools are available.
+- Users see logical metadata exposed by Proxy. It is not equivalent to the complete catalog of every physical database.
+- Tasks that depend on ShardingSphere rules, algorithms, or rule change statements apply only to Proxy connections.
+- Side-effecting tasks should be previewed or planned first, then reviewed before execution.
 
-Usage limits:
+### Direct Database Connection
 
-- ShardingSphere rules, algorithm plugins, and plugin workflows that depend on DistSQL do not apply.
-- Returned metadata is database-native metadata and does not include ShardingSphere logical rule views.
-- Clients must not assume that resources and tools behave exactly the same for direct database connections and Proxy connections.
+A direct database connection means that ShardingSphere-MCP connects to a user-provided database service such as MySQL or PostgreSQL without going through ShardingSphere-Proxy.
+Use this mode when ShardingSphere-MCP acts as a controlled access entry for an existing database, including metadata inspection, object search, and restricted SQL execution.
 
-## Resources
+Available tasks include:
 
-Resources provide context to the model, such as runtime status, database lists, table structure, column information, or workflow plans.
-Clients or models read concrete resource URIs through `resources/read`; resource templates must be filled before they are read.
+- Inspecting databases, schemas, tables, views, columns, indexes, and sequences.
+- Searching metadata objects.
+- Running read-only SQL queries.
+- Previewing or executing ordinary DML, DDL, and DCL after explicit authorization.
 
-| Resource URI or template | Type | Purpose |
-| --- | --- | --- |
-| `shardingsphere://capabilities` | Resource URI | Reads resource URIs, resource templates, tools, prompts, completions, workflow relationships, and side-effect notes. |
-| `shardingsphere://runtime` | Resource URI | Reads the current transport, runtime status, and configured runtime database summary. |
-| `shardingsphere://databases` | Resource URI | Lists runtime databases reachable by the current MCP Server. When connected to Proxy, they correspond to ShardingSphere logical databases. |
-| `shardingsphere://databases/{database}` | Resource template | Reads one runtime database and its metadata summary. |
-| `shardingsphere://databases/{database}/capabilities` | Resource template | Reads SQL, transaction, schema, and metadata-object capabilities for one runtime database. |
-| `shardingsphere://databases/{database}/schemas` | Resource template | Lists schemas or namespaces inside one runtime database. |
-| `shardingsphere://databases/{database}/schemas/{schema}` | Resource template | Reads one schema or namespace. |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences` | Resource template | Lists sequences in one schema. |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences/{sequence}` | Resource template | Reads one sequence. |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables` | Resource template | Lists tables in one schema. |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}` | Resource template | Reads one table. |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns` | Resource template | Lists columns for one table. |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns/{column}` | Resource template | Reads one table column. |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes` | Resource template | Lists indexes for one table. |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes/{index}` | Resource template | Reads one table index. |
-| `shardingsphere://databases/{database}/schemas/{schema}/views` | Resource template | Lists views in one schema. |
-| `shardingsphere://databases/{database}/schemas/{schema}/views/{view}` | Resource template | Reads one view. |
-| `shardingsphere://databases/{database}/schemas/{schema}/views/{view}/columns` | Resource template | Lists columns for one view. |
-| `shardingsphere://databases/{database}/schemas/{schema}/views/{view}/columns/{column}` | Resource template | Reads one view column. |
-| `shardingsphere://workflows/{plan_id}` | Resource template | Reads a current-session workflow plan, clarification questions, artifacts, and next actions. |
+Usage boundaries:
 
-Plugin resources, tools, prompts, and completion targets are documented on the corresponding plugin pages.
+- ShardingSphere rule state is not available.
+- Feature plugins that depend on ShardingSphere rules, such as data encryption, data masking, broadcast, readwrite-splitting, shadow, and sharding, do not apply.
+- Returned metadata comes from the target database itself and does not represent a ShardingSphere logical rule view.
 
-## Tools
+## Metadata Inspection
 
-Tools execute actions, such as searching metadata, executing SQL, or handling plugin workflow phases.
-Models call tools through `tools/call`. Tools with side effects require an explicit execution mode and should be previewed or reviewed first.
+| Task | Natural language example | Connection target | User focus |
+| --- | --- | --- | --- |
+| List accessible databases | "List the databases that can be accessed." | Proxy or direct database connection | Confirm that database names match the configuration. |
+| Inspect schemas or namespaces | "Show schemas in `logic_db`." | Proxy or direct database connection | For multi-schema databases, confirm the target schema first. |
+| Inspect tables or views | "List tables and views in `public`." | Proxy or direct database connection | Proxy connections show logical objects. |
+| Inspect columns | "Show columns and column types for `orders`." | Proxy or direct database connection | Column types follow metadata visible from the connection target. |
+| Inspect indexes | "Show indexes for `orders`." | Proxy or direct database connection | With Proxy connections, index information may differ from the full physical database structure. |
+| Inspect sequences | "List sequences in `public`." | Proxy or direct database connection | Available only when the connection target exposes sequence metadata. |
+| Inspect storage units | "List storage units in `logic_db`." | Proxy only | Backed by `SHOW STORAGE UNITS FROM logic_db`; sensitive connection properties are redacted or omitted. |
+| Inspect storage unit usage | "Which rules use storage unit `write_ds`?" | Proxy only | Backed by `SHOW RULES USED STORAGE UNIT write_ds FROM logic_db`. |
+| Inspect single tables | "Which storage unit contains single table `t_user`?" | Proxy only | Backed by `SHOW SINGLE TABLE` and `SHOW SINGLE TABLES`; use the default single table storage unit resource for new single tables. |
 
-| Tool | Purpose | Side effects |
-| --- | --- | --- |
-| `database_gateway_search_metadata` | Search runtime database metadata by name fragment and object type, and return resource hints for follow-up reads. | None. |
-| `database_gateway_execute_query` | Execute exactly one classifier-approved `SELECT` or `EXPLAIN ANALYZE` statement. | None; rejects DML, DDL, DCL, transaction control, savepoints, and other side-effecting SQL. |
-| `database_gateway_execute_update` | Preview or execute one SQL statement that may mutate data, metadata, rules, or transaction state. | Yes; requires explicit `execution_mode=preview` or `execution_mode=execute`. |
-| `database_gateway_apply_workflow` | After plugin planning returns `plan_id`, preview, execute, or export a manual package. | Depends on `execution_mode`; `preview` and `manual-only` do not change runtime state. |
-| `database_gateway_validate_workflow` | After plugin workflow execution, validate the result against visible metadata and generated artifacts. | None. |
+## Metadata Search
 
-Plugin tools are documented on the corresponding plugin pages.
+| Task | Natural language example | Connection target | User focus |
+| --- | --- | --- | --- |
+| Search objects by name | "Find tables whose names contain `order`." | Proxy or direct database connection | Useful when the full object name is unknown. |
+| Search by object type | "Find tables and views whose names contain `user`." | Proxy or direct database connection | Narrow the search to tables, views, columns, or other object types. |
+| Search storage units | "Find storage units whose names contain `write`." | Proxy only | Uses `database_gateway_search_metadata` with `object_types=["storage_unit"]`. |
+| Continue from search results | "Open the `orders` table found earlier and show columns and indexes." | Proxy or direct database connection | Search results can provide context for follow-up natural-language tasks. |
 
-## Prompts
+## Queries and Ordinary SQL Changes
 
-Prompts guide the model through a task, such as which resources to read first, which tool to choose, or how to recover from failure.
-Clients fetch prompt content through `prompts/get` and provide it to the model for reasoning. Prompts are not commands that users need to run manually.
+| Task | Natural language example | Connection target | User focus |
+| --- | --- | --- | --- |
+| Run a query | "Query the first 10 rows from `orders`." | Proxy or direct database connection | Use for sample data inspection or query result validation. |
+| Limit returned rows | "Query the first 100 rows from `orders` and do not return more." | Proxy or direct database connection | Avoid returning too much data. |
+| Preview an ordinary SQL change | "Preview this SQL change without executing it." | Proxy or direct database connection | Review impact before execution. |
+| Confirm a previewed ordinary SQL change | "Confirm and execute the SQL change that was just previewed." | Proxy or direct database connection | Requires confirmation that side effects were reviewed. |
 
-| Prompt | Purpose |
-| --- | --- |
-| `inspect_metadata` | Guide the model to read database metadata before choosing a search tool or detail resource. |
-| `safe_sql_execution` | Guide the model to choose the correct SQL tool for read-only queries or side-effecting SQL. |
-| `recover_workflow` | Guide the model to recover or re-plan after plugin workflow failure or unavailable `plan_id`. |
+## Runtime Protection Limits
 
-Plugin prompts are documented on the corresponding plugin pages.
+- When the returned row count is not specified, a query returns at most 100 rows by default.
+- A single query can request at most 5000 rows. If the result is truncated, narrow the predicate, reduce the projection, or request fewer rows.
+- A query timeout can be requested by the task, up to 300000 milliseconds. When omitted, the Server default behavior is used.
+- Each MCP session has a tool-call quota. When the quota is exhausted, close the current session and create a new MCP session.
+- Console-style metadata SQL such as `SHOW STORAGE UNITS` and `SHOW SINGLE TABLES` remains blocked by `database_gateway_execute_query`.
+  Use the corresponding MCP resources or recovery hints instead of raw `SHOW` passthrough.
 
-## Completion targets
+## ShardingSphere Rule Changes
 
-Completion targets help clients or models fill resource URIs, prompt arguments, or tool arguments.
-For example, when a user provides only part of a database, schema, table, or column name, the client can request candidates through `completion/complete`.
+| Task                        | Natural language example                                                                                                  | Connection target | User focus                                                              |
+|-----------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|-------------------------------------------------------------------------|
+| Check existing rules        | "Check whether `orders.phone` already has a masking rule."                                                                | Proxy only        | Rule state comes from ShardingSphere-Proxy.                             |
+| Plan a data encryption rule | "Plan reversible encryption for `orders.status` and preview it without execution."                                        | Proxy only        | Review the rule DistSQL, algorithms, properties, and rule column names. |
+| Plan a data masking rule    | "Plan phone-number masking for `orders.phone`, keep the first 3 and last 4 characters, and preview it without execution." | Proxy only        | Review the masking algorithm, properties, and impact scope.             |
+| Plan a broadcast rule       | "Plan `config_region` as a broadcast table and preview it without execution."                                             | Proxy only        | Review logical table names and broadcast rule DistSQL.                  |
+| Plan a readwrite rule       | "Plan a readwrite-splitting rule with write storage unit `write_ds` and read storage units `read_ds_0, read_ds_1`."       | Proxy only        | Review existing storage units, load-balance algorithm, and status plan. |
+| Plan a shadow rule          | "Plan a shadow rule for `t_order` using source storage unit `ds_0` and shadow storage unit `ds_shadow`."                  | Proxy only        | Review existing storage units, algorithm properties, and cleanup proof. |
+| Plan a sharding rule        | "Plan a sharding table rule for `t_order` with explicit data nodes and a standard strategy."                             | Proxy only        | Review data nodes, strategy, key generation, and unused component proof. |
+| Adjust a rule plan          | "Change the previous plan to use AES."                                                                                    | Proxy only        | Preview again after changing the plan.                                  |
+| Apply a rule change         | "Confirm and execute the previous rule change plan."                                                                      | Proxy only        | Side-effecting; review must be completed before execution.              |
+| Validate a rule change      | "Validate whether the previous masking rule has taken effect."                                                            | Proxy only        | Check rule state and workflow execution result.                         |
 
-### Resource completion targets
-
-| Target | Completed arguments |
-| --- | --- |
-| `shardingsphere://databases/{database}` | `database` |
-| `shardingsphere://databases/{database}/schemas` | `database` |
-| `shardingsphere://databases/{database}/schemas/{schema}` | `database`, `schema` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables` | `database`, `schema` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}` | `database`, `schema`, `table` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns` | `database`, `schema`, `table` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns/{column}` | `database`, `schema`, `table`, `column` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes` | `database`, `schema`, `table` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes/{index}` | `database`, `schema`, `table`, `index` |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences` | `database`, `schema` |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences/{sequence}` | `database`, `schema`, `sequence` |
-| `shardingsphere://workflows/{plan_id}` | `plan_id` |
-
-### Prompt completion targets
-
-| Target | Completed arguments |
-| --- | --- |
-| `inspect_metadata` | `database`, `schema` |
-| `safe_sql_execution` | `database`, `schema` |
-| `recover_workflow` | `plan_id` |
-
-Plugin prompt completion targets are documented on the corresponding plugin pages.
+For detailed usage, see [Data Encryption](../features/encrypt/), [Data Masking](../features/mask/), [Broadcast](../features/broadcast/), [Readwrite-Splitting](../features/readwrite-splitting/), [Shadow](../features/shadow/), and [Sharding](../features/sharding/).

@@ -3,139 +3,100 @@ title = "能力清单"
 weight = 2
 +++
 
-本页说明 ShardingSphere-MCP 的核心能力，以及协议方法、资源 URI、工具和提示之间的关系。
-文档用于解释能力语义；客户端应通过 MCP 列表方法和 `shardingsphere://capabilities` 读取当前 MCP Server 实际暴露的内容。
+本页说明用户可以通过自然语言完成的数据库任务，以及连接 ShardingSphere-Proxy 和数据库直连时的使用边界。
 
-## 能力发现
-
-下面列出的是 MCP 协议方法和 ShardingSphere-MCP 资源 URI。
-`tools/list`、`resources/list`、`resources/read`、`prompts/list` 和 `completion/complete` 是 MCP JSON-RPC 方法名。
-`shardingsphere://...` 是 ShardingSphere-MCP 资源 URI 前缀。
-方法名、工具名和提示名不加 URI 前缀；只有资源 URI 和资源模板使用该前缀。
-
-| 方法或资源 | 类型 | 用途 |
-| --- | --- | --- |
-| `tools/list` | MCP 协议方法 | 列出可调用工具。 |
-| `tools/call` | MCP 协议方法 | 按工具名调用一个工具。 |
-| `resources/list` | MCP 协议方法 | 列出不需要参数即可读取的资源描述；它不返回资源内容。 |
-| `resources/templates/list` | MCP 协议方法 | 列出带参数的资源 URI 模板；客户端需要先填充模板。 |
-| `resources/read` | MCP 协议方法 | 读取一个具体资源 URI 的内容；读取 `shardingsphere://capabilities` 可获得 ShardingSphere 领域能力目录。 |
-| `prompts/list` | MCP 协议方法 | 列出可用提示。 |
-| `prompts/get` | MCP 协议方法 | 读取一个提示内容，并按提示参数生成消息。 |
-| `completion/complete` | MCP 协议方法 | 获取资源、提示或参数的补全候选。 |
-| `shardingsphere://capabilities` | ShardingSphere-MCP 资源 URI | 读取 ShardingSphere 领域能力目录。 |
-
-能力发现返回的是当前 MCP Server 的协议表面；实际能否使用某项能力，还取决于 `runtimeDatabases` 连接的是 ShardingSphere-Proxy 还是普通数据库。
-客户端应先读取 `shardingsphere://runtime` 和 `shardingsphere://databases/{database}/capabilities`，再决定要读取哪些资源或调用哪些工具。
+## 连接目标
 
 ### 连接 ShardingSphere-Proxy
 
-适合让模型理解 ShardingSphere 逻辑库结构、读取治理规则状态、执行受控 SQL，或通过功能插件生成可审查的治理变更计划。
-此模式下，逻辑元数据、逻辑 SQL、DistSQL、规则状态、算法插件和插件工作流可以被 MCP 能力使用。
+适合查看 ShardingSphere 逻辑库结构、读取规则状态、执行受控 SQL，或生成需要审查的规则变更计划。
+
+可用任务包括：
+
+- 查看逻辑库、模式、表、视图、列、索引、序列、存储单元和单表映射。
+- 搜索表、视图、列、索引、存储单元等元数据对象。
+- 执行只读 SQL 查询。
+- 预览可能修改数据、元数据或规则的 SQL。
+- 规划、审查、执行和校验数据加密、数据脱敏、广播表、读写分离、影子库和分片等官方 DistSQL-only 规则变更。
 
 使用限制：
 
-- 物理元数据以 Proxy 暴露结果为准，不能等同于每个底层物理库的完整元数据。
-- 依赖 ShardingSphere 规则、算法或 DistSQL 的功能只适用于 Proxy 连接。
-- 规划类能力生成的是可审查计划，执行前仍需确认业务影响。
+- 用户看到的是 Proxy 暴露的逻辑元数据，不等同于每个底层物理库的完整元数据。
+- 依赖 ShardingSphere 规则、算法或规则变更语句的任务只适用于 Proxy 连接。
+- 有副作用的任务应先预览或生成计划，审查后再确认执行。
 
-### 直接连接数据库
+### 数据库直连
 
-适合把 MCP Server 作为普通数据库的受控访问通路，用于读取 JDBC 元数据、搜索对象、辅助生成查询，或执行受限 SQL。
-此模式下，通用数据库元数据和 SQL 工具可用。
+数据库直连指 ShardingSphere-MCP 不经过 ShardingSphere-Proxy，直接连接用户提供的 MySQL、PostgreSQL 等数据库服务。
+这种模式适合把 ShardingSphere-MCP 作为已有数据库的受控访问入口，用于查看元数据、搜索对象和执行受限 SQL。
+
+可用任务包括：
+
+- 查看数据库、模式、表、视图、列、索引和序列。
+- 搜索元数据对象。
+- 执行只读 SQL 查询。
+- 在明确授权后预览或执行普通 DML、DDL、DCL。
 
 使用限制：
 
-- ShardingSphere 规则、算法插件和依赖 DistSQL 的插件工作流不适用。
-- 返回的是数据库自身元数据，不包含 ShardingSphere 逻辑规则视图。
-- 客户端不能假设直接连接数据库和连接 Proxy 时暴露的资源、工具行为完全一致。
+- 不提供 ShardingSphere 规则状态。
+- 不适用于数据加密、数据脱敏、广播表、读写分离、影子库和分片等依赖 ShardingSphere 规则的功能插件。
+- 返回的是目标数据库自身元数据，不代表 ShardingSphere 逻辑规则视图。
 
-## 资源
+## 元数据查看
 
-资源用于给模型提供上下文，例如运行时状态、数据库列表、表结构、列信息或工作流计划。
-客户端或模型通过 `resources/read` 读取具体资源 URI；资源模板需要先填充参数，再读取。
+| 任务 | 自然语言示例 | 连接目标 | 用户关注点 |
+| --- | --- | --- | --- |
+| 查看可访问的数据库 | “列出当前可以访问的数据库。” | Proxy 或数据库直连 | 确认数据库名称是否和配置一致。 |
+| 查看模式或命名空间 | “查看 `logic_db` 中有哪些模式。” | Proxy 或数据库直连 | 多模式数据库应先确认目标模式。 |
+| 查看表或视图 | “列出 `public` 中的表和视图。” | Proxy 或数据库直连 | Proxy 连接展示的是逻辑对象。 |
+| 查看列信息 | “查看 `orders` 有哪些列，以及列类型是什么。” | Proxy 或数据库直连 | 列类型以连接目标可见元数据为准。 |
+| 查看索引 | “查看 `orders` 的索引。” | Proxy 或数据库直连 | Proxy 连接下索引信息可能不同于底层物理库完整结构。 |
+| 查看序列 | “列出 `public` 中的序列。” | Proxy 或数据库直连 | 仅在连接目标支持序列元数据时可用。 |
+| 查看存储单元 | “列出 `logic_db` 的存储单元。” | 仅 Proxy | 基于 `SHOW STORAGE UNITS FROM logic_db`；敏感连接属性会被脱敏或省略。 |
+| 查看存储单元使用情况 | “哪些规则正在使用存储单元 `write_ds`？” | 仅 Proxy | 基于 `SHOW RULES USED STORAGE UNIT write_ds FROM logic_db`。 |
+| 查看单表映射 | “单表 `t_user` 在哪个存储单元？” | 仅 Proxy | 基于 `SHOW SINGLE TABLE` 和 `SHOW SINGLE TABLES`；新增单表默认位置可读取默认单表存储单元资源。 |
 
-| 资源 URI 或模板 | 类型 | 用途 |
-| --- | --- | --- |
-| `shardingsphere://capabilities` | 资源 URI | 查看资源 URI、资源模板、工具、提示、补全、工作流关系和副作用提示。 |
-| `shardingsphere://runtime` | 资源 URI | 查看当前传输方式、运行状态和已配置运行时数据库摘要。 |
-| `shardingsphere://databases` | 资源 URI | 列出当前 MCP Server 可以访问的运行时数据库；连接 Proxy 时对应 ShardingSphere 逻辑库。 |
-| `shardingsphere://databases/{database}` | 资源模板 | 读取一个运行时数据库的详情和元数据摘要。 |
-| `shardingsphere://databases/{database}/capabilities` | 资源模板 | 读取一个运行时数据库的 SQL、事务、schema 和元数据对象能力。 |
-| `shardingsphere://databases/{database}/schemas` | 资源模板 | 列出一个运行时数据库中的 schema 或 namespace。 |
-| `shardingsphere://databases/{database}/schemas/{schema}` | 资源模板 | 读取一个 schema 或 namespace 的详情。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences` | 资源模板 | 列出一个 schema 中的 sequence。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences/{sequence}` | 资源模板 | 读取一个 sequence 的详情。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables` | 资源模板 | 列出一个 schema 中的表。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}` | 资源模板 | 读取一个表的详情。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns` | 资源模板 | 列出一个表的列。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns/{column}` | 资源模板 | 读取一个表列的详情。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes` | 资源模板 | 列出一个表的索引。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes/{index}` | 资源模板 | 读取一个表索引的详情。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/views` | 资源模板 | 列出一个 schema 中的视图。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/views/{view}` | 资源模板 | 读取一个视图的详情。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/views/{view}/columns` | 资源模板 | 列出一个视图的列。 |
-| `shardingsphere://databases/{database}/schemas/{schema}/views/{view}/columns/{column}` | 资源模板 | 读取一个视图列的详情。 |
-| `shardingsphere://workflows/{plan_id}` | 资源模板 | 读取当前会话中的工作流计划、补问信息、变更产物和下一步动作。 |
+## 元数据搜索
 
-插件提供的资源、工具、提示和补全目标在对应插件页面说明。
+| 任务 | 自然语言示例 | 连接目标 | 用户关注点 |
+| --- | --- | --- | --- |
+| 按名称搜索对象 | “查找名字包含 `order` 的表。” | Proxy 或数据库直连 | 适合不知道完整对象名时缩小范围。 |
+| 按对象类型搜索 | “查找名字包含 `user` 的表和视图。” | Proxy 或数据库直连 | 可以指定只看表、视图或列等对象。 |
+| 搜索存储单元 | “查找名字包含 `write` 的存储单元。” | 仅 Proxy | 使用 `database_gateway_search_metadata` 并传入 `object_types=["storage_unit"]`。 |
+| 查找后继续查看详情 | “打开刚才找到的 `orders` 表，查看字段和索引。” | Proxy 或数据库直连 | 搜索结果可作为后续自然语言任务的上下文。 |
 
-## 工具
+## 查询与普通 SQL 变更
 
-工具用于执行动作，例如搜索元数据、执行 SQL，或处理插件工作流阶段。
-模型通过 `tools/call` 调用工具；有副作用的工具需要显式执行模式，并应先预览或审查。
+| 任务 | 自然语言示例 | 连接目标 | 用户关注点 |
+| --- | --- | --- | --- |
+| 执行查询 | “查询 `orders` 表前 10 行。” | Proxy 或数据库直连 | 适合查看样例数据或验证查询结果。 |
+| 限制返回行数 | “查询 `orders` 表前 100 行，不要返回更多数据。” | Proxy 或数据库直连 | 避免返回过多数据。 |
+| 预览普通 SQL 变更 | “预览这条 SQL 变更，先不要执行。” | Proxy 或数据库直连 | 执行前审查影响范围。 |
+| 确认执行已预览的普通 SQL 变更 | “确认执行刚才预览过的 SQL 变更。” | Proxy 或数据库直连 | 需要确认已审查副作用。 |
 
-| 工具 | 用途 | 副作用 |
-| --- | --- | --- |
-| `database_gateway_search_metadata` | 按名称片段和对象类型搜索运行时数据库元数据，并返回后续资源读取提示。 | 无。 |
-| `database_gateway_execute_query` | 执行一个已判定为查询类的 `SELECT` 或 `EXPLAIN ANALYZE`。 | 无；拒绝 DML、DDL、DCL、事务控制、savepoint 和其他有副作用 SQL。 |
-| `database_gateway_execute_update` | 预览或执行一个可能修改数据、元数据、规则或事务状态的 SQL。 | 有；必须显式传入 `execution_mode=preview` 或 `execution_mode=execute`。 |
-| `database_gateway_apply_workflow` | 插件规划返回 `plan_id` 后，预览、执行或导出人工执行包。 | 取决于 `execution_mode`；`preview` 和 `manual-only` 不修改运行时状态。 |
-| `database_gateway_validate_workflow` | 插件工作流执行后，根据可见元数据和生成产物校验结果。 | 无。 |
+## 运行时保护限制
 
-插件工具在对应插件页面说明。
+- 未指定返回行数时，查询默认最多返回 100 行。
+- 单次查询最多可请求 5000 行；如果结果被截断，应缩小查询条件、减少返回列或降低返回行数。
+- 查询超时可以由任务请求设置，最大值为 300000 毫秒；未指定时使用 Server 默认行为。
+- 单个 MCP 会话有工具调用次数保护；达到限制后，应结束当前会话并重新创建 MCP 会话。
+- `SHOW STORAGE UNITS` 和 `SHOW SINGLE TABLES` 这类控制台风格元数据 SQL 仍会被 `database_gateway_execute_query` 拦截。
+  请使用对应 MCP 资源或恢复提示，不提供原始 `SHOW` 透传。
 
-## 提示
+## ShardingSphere 规则变更
 
-提示用于给模型提供任务引导，例如先读取哪些资源、如何选择工具、如何处理失败恢复。
-客户端通过 `prompts/get` 取得提示内容后，将其交给模型参与推理；提示不是需要用户手工执行的命令。
+| 任务       | 自然语言示例                                        | 连接目标    | 用户关注点                        |
+|----------|-----------------------------------------------|---------|------------------------------|
+| 检查已有规则   | “检查 `orders.phone` 当前是否已有脱敏规则。”               | 仅 Proxy | 规则状态来自 ShardingSphere-Proxy。 |
+| 规划数据加密规则 | “为 `orders.status` 规划可逆加密，先预览不要执行。”           | 仅 Proxy | 审查生成的规则 DistSQL、算法、参数和规则列名。  |
+| 规划数据脱敏规则 | “为 `orders.phone` 规划手机号脱敏，保留前 3 后 4，先预览不要执行。” | 仅 Proxy | 审查脱敏算法、参数和影响范围。              |
+| 规划广播表规则  | “把 `config_region` 规划为广播表，先预览不要执行。”          | 仅 Proxy | 审查逻辑表名和广播表规则 DistSQL。        |
+| 规划读写分离规则 | “规划读写分离规则，写存储单元是 `write_ds`，读存储单元是 `read_ds_0, read_ds_1`。” | 仅 Proxy | 审查已有存储单元、负载均衡算法和状态计划。       |
+| 规划影子规则   | “为 `t_order` 规划影子规则，源存储单元是 `ds_0`，影子存储单元是 `ds_shadow`。” | 仅 Proxy | 审查已有存储单元、算法参数和清理证据。         |
+| 规划分片规则   | “为 `t_order` 规划分片表规则，使用明确的数据节点和标准分片策略。” | 仅 Proxy | 审查数据节点、策略、键生成和未使用组件证据。      |
+| 调整规则计划   | “把刚才的计划改成使用 AES 算法。”                          | 仅 Proxy | 修改后应重新预览。                    |
+| 执行规则变更   | “确认执行刚才的规则变更计划。”                              | 仅 Proxy | 有副作用，执行前应完成审查。               |
+| 校验规则变更   | “校验刚才的脱敏规则是否生效。”                              | 仅 Proxy | 查看规则状态和 workflow 执行结果。       |
 
-| 提示 | 用途 |
-| --- | --- |
-| `inspect_metadata` | 引导模型读取数据库元数据，再选择搜索工具或详情资源。 |
-| `safe_sql_execution` | 引导模型区分只读查询和有副作用 SQL，并选择正确 SQL 工具。 |
-| `recover_workflow` | 引导模型在插件工作流失败或 `plan_id` 不可用时恢复或重新规划。 |
-
-插件提示在对应插件页面说明。
-
-## 补全目标
-
-补全目标用于帮助客户端或模型填写资源 URI、提示参数或工具参数。
-例如用户只输入部分数据库、schema、表或列名时，客户端可以通过 `completion/complete` 获取候选值。
-
-### 资源补全目标
-
-| 目标 | 补全参数 |
-| --- | --- |
-| `shardingsphere://databases/{database}` | `database` |
-| `shardingsphere://databases/{database}/schemas` | `database` |
-| `shardingsphere://databases/{database}/schemas/{schema}` | `database`、`schema` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables` | `database`、`schema` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}` | `database`、`schema`、`table` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns` | `database`、`schema`、`table` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/columns/{column}` | `database`、`schema`、`table`、`column` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes` | `database`、`schema`、`table` |
-| `shardingsphere://databases/{database}/schemas/{schema}/tables/{table}/indexes/{index}` | `database`、`schema`、`table`、`index` |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences` | `database`、`schema` |
-| `shardingsphere://databases/{database}/schemas/{schema}/sequences/{sequence}` | `database`、`schema`、`sequence` |
-| `shardingsphere://workflows/{plan_id}` | `plan_id` |
-
-### 提示补全目标
-
-| 目标 | 补全参数 |
-| --- | --- |
-| `inspect_metadata` | `database`、`schema` |
-| `safe_sql_execution` | `database`、`schema` |
-| `recover_workflow` | `plan_id` |
-
-插件提示补全目标在对应插件页面说明。
+详细用法见[数据加密](../features/encrypt/)、[数据脱敏](../features/mask/)、[广播表](../features/broadcast/)、[读写分离](../features/readwrite-splitting/)、[影子库](../features/shadow/)和[分片](../features/sharding/)。

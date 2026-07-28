@@ -27,6 +27,7 @@ import org.apache.shardingsphere.authentication.result.AuthenticationResultBuild
 import org.apache.shardingsphere.authority.checker.AuthorityChecker;
 import org.apache.shardingsphere.authority.rule.AuthorityRule;
 import org.apache.shardingsphere.database.connector.core.type.DatabaseType;
+import org.apache.shardingsphere.database.exception.core.exception.data.InvalidParameterValueException;
 import org.apache.shardingsphere.database.exception.core.exception.syntax.database.UnknownDatabaseException;
 import org.apache.shardingsphere.database.exception.postgresql.exception.authority.EmptyUsernameException;
 import org.apache.shardingsphere.database.exception.postgresql.exception.authority.InvalidPasswordException;
@@ -61,6 +62,8 @@ import org.apache.shardingsphere.proxy.frontend.connection.ConnectionIdGenerator
 import org.apache.shardingsphere.proxy.frontend.postgresql.authentication.authenticator.PostgreSQLAuthenticatorType;
 import org.apache.shardingsphere.proxy.frontend.ssl.ProxySSLContext;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -117,7 +120,7 @@ public final class PostgreSQLAuthenticationEngine implements AuthenticationEngin
         context.write(new PostgreSQLParameterStatusPacket("integer_datetimes", "on"));
         context.write(new PostgreSQLParameterStatusPacket("standard_conforming_strings", "on"));
         context.writeAndFlush(PostgreSQLReadyForQueryPacket.NOT_IN_TRANSACTION);
-        return AuthenticationResultBuilder.finished(currentAuthResult.getUsername(), "", currentAuthResult.getDatabase());
+        return AuthenticationResultBuilder.finished(currentAuthResult.getUsername(), "", currentAuthResult.getDatabase(), currentAuthResult.getConnectionAttributes());
     }
     
     private void login(final String databaseName, final String username, final byte[] md5Salt, final String digest, final AuthorityRule rule) {
@@ -132,15 +135,31 @@ public final class PostgreSQLAuthenticationEngine implements AuthenticationEngin
     }
     
     private AuthenticationResult processStartupMessage(final ChannelHandlerContext context, final PostgreSQLPacketPayload payload, final AuthorityRule rule) {
-        startupMessageReceived = true;
         PostgreSQLComStartupPacket startupPacket = new PostgreSQLComStartupPacket(payload);
-        clientEncoding = startupPacket.getClientEncoding();
-        context.channel().attr(CommonConstants.CHARSET_ATTRIBUTE_KEY).set(PostgreSQLCharacterSets.findCharacterSet(clientEncoding));
+        clientEncoding = getNormalizedClientEncoding(startupPacket.getClientEncoding());
+        context.channel().attr(CommonConstants.CHARSET_ATTRIBUTE_KEY).set(StandardCharsets.UTF_8);
         String username = startupPacket.getUsername();
         ShardingSpherePreconditions.checkNotEmpty(username, EmptyUsernameException::new);
+        startupMessageReceived = true;
         context.writeAndFlush(getIdentifierPacket(username, rule));
-        currentAuthResult = AuthenticationResultBuilder.continued(username, "", startupPacket.getDatabase());
+        currentAuthResult = AuthenticationResultBuilder.continued(username, "", startupPacket.getDatabase(), startupPacket.getConnectionAttributes());
         return currentAuthResult;
+    }
+    
+    private String getNormalizedClientEncoding(final String clientEncoding) {
+        String formattedClientEncoding = formatClientEncoding(clientEncoding);
+        String lowerCaseClientEncoding = formattedClientEncoding.toLowerCase(Locale.ROOT);
+        boolean isDefault = "default".equals(lowerCaseClientEncoding);
+        boolean isUtf8 = "utf8".equals(lowerCaseClientEncoding) || "utf-8".equals(lowerCaseClientEncoding) || "utf_8".equals(lowerCaseClientEncoding)
+                || "unicode".equals(lowerCaseClientEncoding);
+        if (!isDefault && !isUtf8) {
+            throw new InvalidParameterValueException("client_encoding", lowerCaseClientEncoding);
+        }
+        return PostgreSQLCharacterSets.UTF8.name();
+    }
+    
+    private String formatClientEncoding(final String value) {
+        return value.startsWith("'") && value.endsWith("'") || value.startsWith("\"") && value.endsWith("\"") ? value.substring(1, value.length() - 1).trim() : value.trim();
     }
     
     private PostgreSQLIdentifierPacket getIdentifierPacket(final String username, final AuthorityRule rule) {

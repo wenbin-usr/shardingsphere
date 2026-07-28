@@ -19,16 +19,17 @@ package org.apache.shardingsphere.mcp.support.workflow.service;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import org.apache.shardingsphere.database.connector.core.metadata.database.enums.QuoteCharacter;
+import org.apache.shardingsphere.database.connector.core.metadata.identifier.IdentifierScope;
 import org.apache.shardingsphere.infra.exception.ShardingSpherePreconditions;
-import org.apache.shardingsphere.mcp.api.protocol.exception.MCPInvalidRequestException;
+import org.apache.shardingsphere.infra.metadata.identifier.DatabaseIdentifierContext;
+import org.apache.shardingsphere.mcp.api.exception.MCPInvalidRequestException;
+import org.apache.shardingsphere.sql.parser.statement.core.value.identifier.IdentifierValue;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -38,30 +39,60 @@ import java.util.stream.Collectors;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class WorkflowSQLUtils {
     
-    private static final String SAFE_IDENTIFIER_PATTERN = "[A-Za-z0-9_$]+";
+    private static final String UNQUOTED_IDENTIFIER_PATTERN = "[A-Za-z_][A-Za-z0-9_$]*";
+    
+    private static final Set<String> DIST_SQL_RESERVED_IDENTIFIERS = Set.of(
+            "address_random_replace", "aes", "algorithm", "alter", "and", "assisted_query", "assisted_query_algorithm", "assisted_query_column", "by", "cipher", "column", "columns", "count",
+            "create", "delete", "drop", "encrypt", "encrypt_algorithm", "exists", "false", "from", "generic_table_random_replace", "group", "if", "index", "insert", "keep_first_n_last_m",
+            "keep_from_x_to_y", "key", "like_query", "like_query_algorithm", "like_query_column", "mask", "mask_after_special_chars", "mask_before_special_chars", "mask_first_n_last_m",
+            "mask_from_x_to_y", "md5", "name", "not", "order", "plugins", "properties", "rule", "rules", "select", "show", "table", "true", "type", "update", "where");
+    
+    private static final char BACK_QUOTE = '`';
+    
+    private static final char DOUBLE_QUOTE = '"';
     
     /**
-     * Check whether an identifier can be used as an unquoted SQL identifier.
+     * Normalize a SQL identifier from user input.
      *
-     * @param identifier identifier to check
-     * @return whether the identifier is safe
+     * @param identifier identifier to normalize
+     * @return normalized identifier
      */
-    public static boolean isSafeIdentifier(final String identifier) {
-        return null != identifier && identifier.matches(SAFE_IDENTIFIER_PATTERN);
+    public static String normalizeIdentifier(final String identifier) {
+        String result = trimToEmpty(identifier);
+        if (isDelimitedIdentifier(result, BACK_QUOTE, BACK_QUOTE)) {
+            return result.substring(1, result.length() - 1).replace("``", "`");
+        }
+        if (isDelimitedIdentifier(result, DOUBLE_QUOTE, DOUBLE_QUOTE)) {
+            return result.substring(1, result.length() - 1).replace("\"\"", "\"");
+        }
+        if (isDelimitedIdentifier(result, '[', ']')) {
+            return result.substring(1, result.length() - 1).replace("]]", "]");
+        }
+        return result;
     }
     
     /**
-     * Validate an unquoted SQL identifier.
+     * Check whether an identifier is supported by workflow planning.
+     *
+     * @param identifier identifier to check
+     * @return whether the identifier is supported
+     */
+    public static boolean isSupportedIdentifier(final String identifier) {
+        return !containsUnsupportedIdentifierCharacter(normalizeIdentifier(identifier));
+    }
+    
+    /**
+     * Validate a workflow SQL identifier.
      *
      * @param fieldName field name for error reporting
      * @param identifier identifier to check
      * @throws MCPInvalidRequestException when the identifier contains unsupported characters
      */
-    public static void checkSafeIdentifier(final String fieldName, final String identifier) {
-        String actualIdentifier = trimToEmpty(identifier);
-        ShardingSpherePreconditions.checkState(actualIdentifier.isEmpty() || isSafeIdentifier(actualIdentifier),
+    public static void checkSupportedIdentifier(final String fieldName, final String identifier) {
+        String actualIdentifier = normalizeIdentifier(identifier);
+        ShardingSpherePreconditions.checkState(!containsUnsupportedIdentifierCharacter(actualIdentifier),
                 () -> new MCPInvalidRequestException(String.format(
-                        "%s `%s` contains unsupported characters. Workflow and generated SQL planning support standard unquoted identifiers only.", fieldName, actualIdentifier)));
+                        "%s `%s` contains unsupported characters that cannot be rendered as a reviewable SQL identifier.", fieldName, actualIdentifier)));
     }
     
     /**
@@ -71,8 +102,45 @@ public final class WorkflowSQLUtils {
      * @return formatted DistSQL identifier
      */
     public static String formatDistSQLIdentifier(final String identifier) {
-        String actualIdentifier = trimToEmpty(identifier);
-        return actualIdentifier.isEmpty() || isSafeIdentifier(actualIdentifier) ? actualIdentifier : String.format("`%s`", actualIdentifier.replace("`", "``"));
+        String rawIdentifier = trimToEmpty(identifier);
+        String actualIdentifier = normalizeIdentifier(rawIdentifier);
+        checkSupportedIdentifier("identifier", actualIdentifier);
+        return actualIdentifier.isEmpty() || !isSpecialDistSQLIdentifier(actualIdentifier) && !isDelimitedIdentifier(rawIdentifier)
+                ? actualIdentifier
+                : wrapIdentifier(QuoteCharacter.BACK_QUOTE, actualIdentifier);
+    }
+    
+    /**
+     * Format an identifier rendered by generated rule DistSQL artifacts.
+     *
+     * @param identifier identifier to format
+     * @return formatted DistSQL identifier
+     */
+    public static String formatGeneratedRuleDistSQLIdentifier(final String identifier) {
+        String actualIdentifier = normalizeIdentifier(trimToEmpty(identifier));
+        checkSupportedIdentifier("identifier", actualIdentifier);
+        return actualIdentifier.isEmpty() ? actualIdentifier : wrapIdentifier(QuoteCharacter.BACK_QUOTE, actualIdentifier);
+    }
+    
+    /**
+     * Judge whether a workflow identifier token references an existing identifier under the target database policy.
+     *
+     * @param identifierContext identifier context
+     * @param identifierScope identifier scope
+     * @param identifier identifier token
+     * @param existingIdentifier existing identifier
+     * @return whether the identifier references the existing identifier
+     */
+    public static boolean isSameIdentifier(final DatabaseIdentifierContext identifierContext, final IdentifierScope identifierScope,
+                                           final String identifier, final String existingIdentifier) {
+        String actualIdentifier = normalizeIdentifier(identifier);
+        String actualExistingIdentifier = normalizeIdentifier(existingIdentifier);
+        return identifierContext.matchesMetaData(identifierScope, actualExistingIdentifier, new IdentifierValue(actualIdentifier, getQuoteCharacter(identifier)));
+    }
+    
+    static boolean requiresExactIdentifierMatch(final String identifier) {
+        String rawIdentifier = trimToEmpty(identifier);
+        return isDelimitedIdentifier(rawIdentifier) || isSpecialSQLIdentifier(normalizeIdentifier(rawIdentifier));
     }
     
     /**
@@ -86,20 +154,6 @@ public final class WorkflowSQLUtils {
     }
     
     /**
-     * Create properties with trimmed string values.
-     *
-     * @param entries property entries
-     * @return created properties
-     */
-    public static Properties createProperties(final Map<String, String> entries) {
-        Properties result = new Properties();
-        for (Entry<String, String> entry : entries.entrySet()) {
-            result.setProperty(entry.getKey(), trimToEmpty(entry.getValue()));
-        }
-        return result;
-    }
-    
-    /**
      * Create an algorithm fragment for DistSQL.
      *
      * @param algorithmType algorithm type
@@ -108,13 +162,28 @@ public final class WorkflowSQLUtils {
      */
     public static String createAlgorithmFragment(final String algorithmType, final Map<String, String> properties) {
         String actualType = trimToEmpty(algorithmType).toLowerCase(Locale.ENGLISH);
-        if (actualType.isEmpty()) {
+        return createAlgorithmFragmentWithType(actualType, properties);
+    }
+    
+    /**
+     * Create an algorithm fragment for DistSQL while preserving the algorithm type case.
+     *
+     * @param algorithmType algorithm type
+     * @param properties algorithm properties
+     * @return DistSQL algorithm fragment
+     */
+    public static String createAlgorithmFragmentWithExactType(final String algorithmType, final Map<String, String> properties) {
+        return createAlgorithmFragmentWithType(trimToEmpty(algorithmType), properties);
+    }
+    
+    private static String createAlgorithmFragmentWithType(final String algorithmType, final Map<String, String> properties) {
+        if (algorithmType.isEmpty()) {
             return "";
         }
-        Properties actualProperties = createProperties(properties);
+        Properties actualProperties = WorkflowAlgorithmUtils.createProperties(properties);
         return actualProperties.isEmpty()
-                ? String.format("TYPE(NAME='%s')", escapeLiteral(actualType))
-                : String.format("TYPE(NAME='%s', PROPERTIES(%s))", escapeLiteral(actualType), createPropertiesFragment(actualProperties));
+                ? String.format("TYPE(NAME='%s')", escapeLiteral(algorithmType))
+                : String.format("TYPE(NAME='%s', PROPERTIES(%s))", escapeLiteral(algorithmType), createPropertiesFragment(actualProperties));
     }
     
     private static String createPropertiesFragment(final Properties props) {
@@ -123,99 +192,36 @@ public final class WorkflowSQLUtils {
                 .collect(Collectors.joining(", "));
     }
     
-    /**
-     * Parse property entries from a list of {@code key=value} or {@code key:value} strings.
-     *
-     * @param entries property entries
-     * @return parsed property map
-     */
-    public static Map<String, String> parsePropertyEntries(final List<String> entries) {
-        Map<String, String> result = new LinkedHashMap<>(entries.size(), 1F);
-        for (String each : entries) {
-            int separatorIndex = findPropertySeparatorIndex(each);
-            if (-1 == separatorIndex) {
-                continue;
-            }
-            String key = each.substring(0, separatorIndex).trim();
-            String value = each.substring(separatorIndex + 1).trim();
-            if (!key.isEmpty()) {
-                result.put(key, value);
-            }
-        }
-        return result;
+    private static boolean isDelimitedIdentifier(final String identifier) {
+        return isDelimitedIdentifier(identifier, BACK_QUOTE, BACK_QUOTE) || isDelimitedIdentifier(identifier, DOUBLE_QUOTE, DOUBLE_QUOTE) || isDelimitedIdentifier(identifier, '[', ']');
     }
     
-    /**
-     * Create a property map from supported property carrier types.
-     *
-     * @param value property carrier value
-     * @return normalized property map
-     */
-    public static Map<String, String> createPropertyMap(final Object value) {
-        if (null == value) {
-            return Map.of();
-        }
-        if (value instanceof Properties) {
-            return createPropertyMap((Properties) value);
-        }
-        if (value instanceof Map) {
-            return createPropertyMap((Map<?, ?>) value);
-        }
-        return parsePropertyString(String.valueOf(value));
+    private static boolean isDelimitedIdentifier(final String identifier, final char startDelimiter, final char endDelimiter) {
+        return identifier.length() >= 2 && startDelimiter == identifier.charAt(0) && endDelimiter == identifier.charAt(identifier.length() - 1);
     }
     
-    private static Map<String, String> createPropertyMap(final Properties props) {
-        Map<String, String> result = new LinkedHashMap<>(props.size(), 1F);
-        for (String each : props.stringPropertyNames()) {
-            result.put(each, trimToEmpty(props.getProperty(each)));
-        }
-        return result;
+    private static boolean containsUnsupportedIdentifierCharacter(final String identifier) {
+        return identifier.chars().anyMatch(each -> BACK_QUOTE == each || 0 == each || '\r' == each || '\n' == each);
     }
     
-    private static Map<String, String> createPropertyMap(final Map<?, ?> props) {
-        Map<String, String> result = new LinkedHashMap<>(props.size(), 1F);
-        for (Entry<?, ?> entry : props.entrySet()) {
-            String key = trimToEmpty(Objects.toString(entry.getKey(), ""));
-            if (!key.isEmpty()) {
-                result.put(key, trimToEmpty(Objects.toString(entry.getValue(), "")));
-            }
-        }
-        return result;
+    private static boolean isSpecialDistSQLIdentifier(final String identifier) {
+        return !identifier.matches(UNQUOTED_IDENTIFIER_PATTERN) || DIST_SQL_RESERVED_IDENTIFIERS.contains(identifier.toLowerCase(Locale.ENGLISH));
     }
     
-    private static Map<String, String> parsePropertyString(final String value) {
-        String actualValue = trimToEmpty(value);
-        if (actualValue.isEmpty() || "{}".equals(actualValue)) {
-            return Map.of();
-        }
-        String normalizedValue = actualValue;
-        if (normalizedValue.startsWith("{") && normalizedValue.endsWith("}")) {
-            normalizedValue = normalizedValue.substring(1, normalizedValue.length() - 1);
-        }
-        List<String> entries = List.of(normalizedValue.split(","));
-        Map<String, String> result = new LinkedHashMap<>(entries.size(), 1F);
-        for (Entry<String, String> entry : parsePropertyEntries(entries).entrySet()) {
-            result.put(stripQuotes(entry.getKey()), stripQuotes(entry.getValue()));
-        }
-        return result;
+    private static boolean isSpecialSQLIdentifier(final String identifier) {
+        return !identifier.matches(UNQUOTED_IDENTIFIER_PATTERN);
     }
     
-    private static int findPropertySeparatorIndex(final String propertyEntry) {
-        int equalsIndex = propertyEntry.indexOf('=');
-        return -1 == equalsIndex ? propertyEntry.indexOf(':') : equalsIndex;
+    private static QuoteCharacter getQuoteCharacter(final String identifier) {
+        String actualIdentifier = trimToEmpty(identifier);
+        return isDelimitedIdentifier(actualIdentifier) ? QuoteCharacter.getQuoteCharacter(actualIdentifier) : QuoteCharacter.NONE;
     }
     
-    private static String stripQuotes(final String value) {
-        String actualValue = trimToEmpty(value);
-        if (2 > actualValue.length()) {
-            return actualValue;
-        }
-        char first = actualValue.charAt(0);
-        char last = actualValue.charAt(actualValue.length() - 1);
-        if ('\'' == first && '\'' == last || '"' == first && '"' == last) {
-            return actualValue.substring(1, actualValue.length() - 1);
-        }
-        return actualValue;
+    private static String wrapIdentifier(final QuoteCharacter quoteCharacter, final String value) {
+        return QuoteCharacter.NONE == quoteCharacter
+                ? value
+                : quoteCharacter.getStartDelimiter() + value.replace(quoteCharacter.getEndDelimiter(), quoteCharacter.getEndDelimiter() + quoteCharacter.getEndDelimiter())
+                        + quoteCharacter.getEndDelimiter();
     }
     
     private static String trimToEmpty(final String value) {

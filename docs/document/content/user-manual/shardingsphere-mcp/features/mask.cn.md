@@ -1,162 +1,114 @@
 +++
 title = "数据脱敏"
-weight = 2
+weight = 3
 +++
 
-数据脱敏 MCP 功能插件帮助 MCP 客户端把脱敏需求规划成 ShardingSphere-Proxy 可执行的 DistSQL 和校验步骤。
-脱敏规则直接作用于逻辑列，不生成加密功能使用的物理派生列。
+数据脱敏 MCP 功能插件帮助用户为 ShardingSphere-Proxy 逻辑库规划、审查、执行和校验数据脱敏规则变更。
+脱敏规则直接作用于逻辑列。本功能只生成和应用脱敏规则 DistSQL，不生成物理 DDL、索引建议、数据迁移或额外探测 SQL。
 
 ## 前置条件
 
 - 当前版本只支持连接 ShardingSphere-Proxy 暴露的逻辑库。
 - `runtimeDatabases` 应指向 Proxy 逻辑库，而不是底层物理存储库。
-- 直连真实数据库时，本功能不适用；真实数据库通常不识别 ShardingSphere 脱敏 DistSQL，也不能暴露 Proxy 中可见的脱敏算法插件和规则状态。
-- 目标逻辑表和逻辑列应能通过 Proxy 暴露的 JDBC 元数据发现；这些信息不保证等同于底层物理库的完整元数据。
+- 数据库直连时，本功能不适用；目标数据库通常不识别 ShardingSphere 脱敏规则变更语句，也不能暴露 Proxy 中可见的脱敏算法插件和规则状态。
+- 用户需要提供目标逻辑库、表和列名；规划阶段不会探测真实物理表结构。
 
-## 可调用能力
+## 通过自然语言使用
 
-| 能力 | 怎么调用 | 什么时候用 |
-| --- | --- | --- |
-| `database_gateway_plan_mask_rule` | 通过 `tools/call` 调用。 | 用户提出创建、调整或删除脱敏规则需求时，用它生成 `plan_id`、DistSQL 和校验步骤。 |
-| `database_gateway_apply_workflow` | 通过 `tools/call` 调用，并传入规划阶段返回的 `plan_id`。 | 先预览计划，再在审查后执行，或导出人工执行包。 |
-| `database_gateway_validate_workflow` | 通过 `tools/call` 调用，并传入同一个 `plan_id`。 | 自动执行或人工执行完成后，校验规则状态、逻辑元数据和 SQL 可执行性。 |
-| `shardingsphere://features/mask/algorithms` | 通过 `resources/read` 读取。 | 规划前查看 Proxy 当前可见的脱敏算法类型和参数要求。 |
-| `shardingsphere://features/mask/databases/{database}/rules` | 填充 `{database}` 后通过 `resources/read` 读取。 | 规划修改前查看逻辑库已有脱敏规则。 |
-| `shardingsphere://features/mask/databases/{database}/tables/{table}/rules` | 填充 `{database}` 和 `{table}` 后通过 `resources/read` 读取。 | 只关心单表脱敏规则，或需要保留同表其他列规则时读取。 |
-| `plan_mask_rule` | 通过 `prompts/get` 获取提示。 | 客户端希望先引导模型读取表结构、算法和已有规则，再调用规划工具时使用。 |
-| `plan_mask_rule` 补全 | 通过 `completion/complete` 获取候选值。 | 为 `database`、`schema`、`table`、`column`、`algorithm_type` 或 `plan_id` 补全。 |
+用户在集成 ShardingSphere-MCP 的 AI 应用中描述脱敏目标即可。
 
-## 最小输入
+示例：
 
-创建或修改脱敏规则时，规划工具主要使用以下输入：
+- 检查 `logic_db.orders.phone` 当前是否已有脱敏规则。
+- 列出当前 Proxy 可用的数据脱敏算法。
+- 为 `logic_db.orders.phone` 规划手机号脱敏，保留前 3 后 4，先预览不要执行。
+- 调整刚才的计划，把替换字符改成 `*`。
+- 确认并执行刚才的脱敏规则计划，然后校验结果。
 
-| 参数 | 是否必填 | 作用 |
-| --- | --- | --- |
-| `database` | 必填 | ShardingSphere-Proxy 暴露的逻辑库名称。 |
-| `table` | 必填 | 要配置脱敏规则的逻辑表。 |
-| `column` | 必填 | 要配置脱敏规则的逻辑列。 |
-| `schema` | 可选 | schema 或 namespace；多 schema 逻辑库建议填写。 |
-| `natural_language_intent` | 推荐 | 描述脱敏目标，例如手机号保留位数或替换字符；当未显式填写规则细节时，MCP 会用它推断规划意图。 |
-| `operation_type` | 可选 | 规则操作类型；支持 `create`、`alter` 和 `drop`。不填写时由 MCP 根据自然语言和现有规则推断。 |
-| `algorithm_type` | 可选 | 脱敏算法类型；如果希望 MCP 基于可用算法给出建议，可以先不填。 |
-| `primary_algorithm_properties` | 按算法必填 | 脱敏算法参数，例如保留位数和替换字符。具体参数以算法资源返回值为准。 |
+用户需要审查计划中的脱敏规则 DistSQL、算法参数和副作用范围，再批准有副作用的执行。
 
-删除脱敏规则时，至少提供：
+## 提出脱敏需求
 
-- `database`
-- `table`
-- `column`
-- `operation_type=drop`
+建议在自然语言中说明以下信息：
 
-## 规划脱敏规则
+| 信息      | 说明                                    | 示例                                                     |
+|---------|---------------------------------------|--------------------------------------------------------|
+| 逻辑库、表和列 | 指定要配置脱敏规则的 ShardingSphere-Proxy 逻辑对象。 | “为 `logic_db.orders.phone` 配置脱敏。”              |
+| 模式或命名空间 | 多模式逻辑库建议说明。                           | “模式是 `public`。”                                        |
+| 操作类型    | 创建、修改或删除脱敏规则。                         | “新增脱敏规则”或“删除这个列的脱敏规则”。                                 |
+| 脱敏目标    | 说明保留位数、替换字符或其他脱敏效果。                   | “手机号保留前 3 后 4，中间用 `*` 替换。”                             |
+| 算法偏好    | 可以指定算法，也可以要求 MCP 根据 Proxy 可用算法推荐。     | “列出当前 Proxy 可用的数据脱敏算法。”或“优先使用 keep-first-n-last-m 算法。” |
+| 算法参数    | 例如保留位数和替换字符。                          | “保留前 3 后 4，替换字符是 `*`。”                                 |
 
-规划脱敏规则就是调用 `database_gateway_plan_mask_rule`。
-它只生成可审查的计划，不直接修改数据库。
+## 创建、修改和删除规则
+
+| 操作 | 自然语言示例                              | 需要审查的内容                  |
+|----|-------------------------------------|--------------------------|
+| 创建 | “为 `orders.phone` 规划手机号脱敏，先预览不要执行。” | 新增脱敏规则、脱敏算法和参数。          |
+| 修改 | “把刚才的脱敏规则改成保留前 3 后 4。”              | 修改后的脱敏规则，以及同表其他脱敏列是否保留。  |
+| 删除 | “删除 `orders.phone` 的脱敏规则，先预览影响范围。”  | 目标列规则是否删除，以及同表其他脱敏列是否保留。 |
+
+## 审查脱敏计划
+
+计划生成后，应重点审查：
+
+- 待执行语句是否符合创建、修改或删除脱敏规则的预期。
+- 脱敏算法和参数是否符合业务合规要求。
+- 删除规则后，通过 Proxy 查询该列时是否不再应用该脱敏规则。
+- 是否会影响运行时规则或已有业务 SQL。
+- 是否确认不需要 ShardingSphere-MCP 生成额外 DDL、索引、数据处理或 SQL 可执行性探测。
+
+## 敏感参数处理
+
+部分脱敏算法参数可能需要由运维侧受控提供，例如替换字符或自定义算法参数。
+可以在算法属性中使用敏感值引用对象：
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "id": "mask-plan-1",
-  "method": "tools/call",
-  "params": {
-    "name": "database_gateway_plan_mask_rule",
-    "arguments": {
-      "database": "<logic-database>",
-      "table": "orders",
-      "column": "phone",
-      "natural_language_intent": "把 phone 当作手机号做脱敏，保留前3后4",
-      "algorithm_type": "KEEP_FIRST_N_LAST_M",
-      "primary_algorithm_properties": {
-        "first-n": "3",
-        "last-m": "4",
-        "replace-char": "*"
-      }
+  "primary_algorithm_properties": {
+    "replace-char": {
+      "secret_ref": "placeholder://secret-value-1"
     }
   }
 }
 ```
 
-典型结果：
-
-- 返回 `plan_id`。
-- `status` 为 `planned` 或 `clarifying`。
-- `distsql_artifacts` 包含 `CREATE/ALTER MASK RULE`。
-- `ddl_artifacts` 通常为空。
-- `index_plan` 通常为空。
-
-如果自然语言没有说清算法或缺少算法属性，MCP 会返回 `clarifying`。
-此时应继续使用同一个 `plan_id` 补齐 `clarification_questions` 中要求的字段。
+占位符对象中的 `secret_ref` 只表示需要人工替换的敏感值槽位。
+规划、预览、执行结果和校验输出只显示中性占位符或 `******`，不会回显 `secret_ref` 或真实敏感值。
+如果规则变更仍包含敏感值占位符，自动执行会在产生副作用前返回 `secret_reference_manual_execution_required`；执行人员应在 MCP 和 AI 应用之外替换真实值后手工执行。
 
 ## 执行与校验
 
-规划工具返回 `plan_id` 后，再使用通用工作流工具处理执行和校验。
+建议先预览，确认待执行规则 DistSQL 和副作用范围后再执行。
 
-执行前先预览：
+| 阶段   | 自然语言示例               | 用户关注点                    |
+|------|----------------------|--------------------------|
+| 预览   | “先预览刚才的脱敏规则计划，不要执行。” | 查看将要执行的规则 DistSQL、算法和参数。 |
+| 执行   | “确认执行刚才的计划。”         | 确认有副作用的变更已经过审查。          |
+| 人工执行 | “导出人工执行包，不要自动执行。”    | 由运维人员在受控环境审查和执行。         |
+| 校验   | “校验刚才的脱敏规则是否生效。”     | 查看规则状态和 workflow 执行结果。   |
 
-```json
-{
-  "name": "database_gateway_apply_workflow",
-  "arguments": {
-    "plan_id": "${PLAN_ID}",
-    "execution_mode": "preview"
-  }
-}
-```
-
-确认变更产物后执行：
-
-```json
-{
-  "name": "database_gateway_apply_workflow",
-  "arguments": {
-    "plan_id": "${PLAN_ID}",
-    "execution_mode": "review-then-execute"
-  }
-}
-```
-
-校验：
-
-```json
-{
-  "name": "database_gateway_validate_workflow",
-  "arguments": {
-    "plan_id": "${PLAN_ID}"
-  }
-}
-```
-
-校验重点：
-
-- `rule_validation`
-- `logical_metadata_validation`
-- `sql_executability_validation`
-
-## 删除脱敏规则
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "mask-drop-1",
-  "method": "tools/call",
-  "params": {
-    "name": "database_gateway_plan_mask_rule",
-    "arguments": {
-      "database": "<logic-database>",
-      "table": "orders",
-      "column": "phone",
-      "operation_type": "drop"
-    }
-  }
-}
-```
-
-如果同一个表上还有其他脱敏列，MCP 会生成 `ALTER MASK RULE` 并保留这些同表规则。
-只有目标表不再保留任何脱敏列时，MCP 才会生成 `DROP MASK RULE`。
+规则变更的通用审查流程见[规则变更流程](../plugin-workflow/)。
 
 ## 限制
 
+### 支持范围
+
 - 仅支持 ShardingSphere-Proxy 逻辑库。
-- 逻辑列和规则校验以 Proxy 可见信息为准；直连真实数据库只能执行普通 SQL，不代表脱敏规则状态。
-- 不提供自动回滚。
-- 规划器只接受普通未加引号的逻辑库、schema、表和列名，用于降低自动生成 SQL 的歧义；这不是 ShardingSphere SQL 能力限制。
+- 数据库直连时，本功能不适用。
+
+### 能力边界
+
+- ShardingSphere-MCP 不提供脱敏算法本身，也不替代用户判断脱敏策略是否满足业务合规要求。
+- 规划结果是可审查的变更计划；是否执行仍需要用户确认。
+- 规划和执行仅限脱敏规则 DistSQL，不生成或执行物理 DDL、索引、数据迁移、回填、洗数或 SQL 可执行性探测任务。
+- 删除脱敏规则只移除规则本身；后续通过 Proxy 查询该列时不再应用该脱敏规则。
+
+### 元数据边界
+
+- 规则规划以 Proxy 可见的规则和算法状态为准；规划阶段不会读取或推断真实物理表结构。
+- 数据库直连只能执行普通 SQL，不代表脱敏规则状态。
+
+### 对象名处理边界
+
+- ShardingSphere-MCP 会处理带引号、大小写敏感、关键字、空格和 Unicode 对象名。为保证生成的 SQL 或规则变更语句可审查，对象名内容不能包含反引号、NUL、回车或换行。

@@ -27,6 +27,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
@@ -69,6 +70,13 @@ class MySQLJsonValueDecoderTest {
         jsonEntries.add(new Object[]{JsonValueTypes.LITERAL, "key3", JsonValueTypes.LITERAL_FALSE});
         ByteBuf payload = mockJsonObjectByteBuf(jsonEntries, false);
         assertThat(MySQLJsonValueDecoder.decode(payload), is("{\"key1\":null,\"key2\":true,\"key3\":false}"));
+    }
+    
+    @Test
+    void assertDecodeSmallJsonObjectWithMultibyteUtf8KeyAndValue() {
+        List<Object[]> jsonEntries = Collections.singletonList(new Object[]{JsonValueTypes.STRING, "名前", "café"});
+        ByteBuf payload = mockJsonObjectByteBuf(jsonEntries, true);
+        assertThat(MySQLJsonValueDecoder.decode(payload), is("{\"名前\":\"café\"}"));
     }
     
     @Test
@@ -179,7 +187,7 @@ class MySQLJsonValueDecoderTest {
         ByteBuf result = Unpooled.buffer();
         for (Object[] each : jsonEntries) {
             writeInt(jsonByteBuf, startOffset + result.readableBytes(), isSmall);
-            byte[] keyBytes = ((String) each[1]).getBytes();
+            byte[] keyBytes = ((String) each[1]).getBytes(StandardCharsets.UTF_8);
             jsonByteBuf.writeShortLE(keyBytes.length);
             result.writeBytes(keyBytes);
         }
@@ -248,9 +256,10 @@ class MySQLJsonValueDecoderTest {
     }
     
     private void writeString(final ByteBuf jsonByteBuf, final String value) {
-        byte[] result = codecDataLength(value.length());
+        byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
+        byte[] result = codecDataLength(valueBytes.length);
         jsonByteBuf.writeBytes(result, 0, result.length);
-        jsonByteBuf.writeBytes(value.getBytes());
+        jsonByteBuf.writeBytes(valueBytes);
     }
     
     private byte[] codecDataLength(final int length) {
@@ -280,6 +289,13 @@ class MySQLJsonValueDecoderTest {
                 Arguments.of("decode top-level literal false", mockTopLevelLiteralByteBuf(JsonValueTypes.LITERAL_FALSE), "false"),
                 Arguments.of("decode top-level string", mockTopLevelStringByteBuf("hello"), "\"hello\""),
                 Arguments.of("decode top-level string with escaped chars", mockTopLevelStringByteBuf("a\"\\b"), "\"a\\\"\\\\b\""),
+                Arguments.of("decode top-level string with backspace", mockTopLevelStringByteBuf("a\bb"), "\"a\\bb\""),
+                Arguments.of("decode top-level string with form feed", mockTopLevelStringByteBuf("a\fb"), "\"a\\fb\""),
+                Arguments.of("decode top-level string with newline", mockTopLevelStringByteBuf("a\nb"), "\"a\\nb\""),
+                Arguments.of("decode top-level string with carriage return", mockTopLevelStringByteBuf("a\rb"), "\"a\\rb\""),
+                Arguments.of("decode top-level string with tab", mockTopLevelStringByteBuf("a\tb"), "\"a\\tb\""),
+                Arguments.of("decode top-level string with unicode control char 0x01", mockTopLevelStringByteBuf("a" + (char) 0x01 + "b"), "\"a\\u0001b\""),
+                Arguments.of("decode top-level string with unicode control char 0x1f", mockTopLevelStringByteBuf("a" + (char) 0x1f + "b"), "\"a\\u001fb\""),
                 Arguments.of("decode top-level int32", mockTopLevelInt32ByteBuf(123), "123"),
                 Arguments.of("decode top-level double", mockTopLevelDoubleByteBuf(45.6D), "45.6"),
                 Arguments.of("decode int16 top-level", mockTopLevelInt16ByteBuf(), "-32768"),
@@ -320,6 +336,12 @@ class MySQLJsonValueDecoderTest {
                         "{\"key1\":9223372036854775807,\"key2\":9223372036854775808}"),
                 Arguments.of("decode small object with double", Arrays.asList(new Object[][]{new Object[]{JsonValueTypes.DOUBLE, "key1", Double.MAX_VALUE}}),
                         "{\"key1\":1.7976931348623157E308}"),
+                Arguments.of("decode small object with tab string", Collections.singletonList(new Object[]{JsonValueTypes.STRING, "key1", "a\tb"}),
+                        "{\"key1\":\"a\\tb\"}"),
+                Arguments.of("decode small object with unicode control string", Collections.singletonList(new Object[]{JsonValueTypes.STRING, "key1", "a" + (char) 0x01 + "b"}),
+                        "{\"key1\":\"a\\u0001b\"}"),
+                Arguments.of("decode small object with tab key", Collections.singletonList(new Object[]{JsonValueTypes.STRING, "key\t1", "value1"}),
+                        "{\"key\\t1\":\"value1\"}"),
                 Arguments.of("decode small object with string",
                         Arrays.asList(new Object[]{JsonValueTypes.STRING, "key1", value1}, new Object[]{JsonValueTypes.STRING, "key2", value2}, new Object[]{JsonValueTypes.STRING, "key3", value3},
                                 new Object[]{JsonValueTypes.STRING, "key4", value4}),

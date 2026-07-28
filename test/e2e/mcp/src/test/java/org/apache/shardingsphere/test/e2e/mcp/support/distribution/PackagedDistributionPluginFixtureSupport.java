@@ -17,6 +17,8 @@
 
 package org.apache.shardingsphere.test.e2e.mcp.support.distribution;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.apache.shardingsphere.test.e2e.mcp.support.fixture.plugin.PluginFixtureHandlerProvider;
 import org.apache.shardingsphere.test.e2e.mcp.support.fixture.plugin.PluginFixturePingToolHandler;
 import org.apache.shardingsphere.test.e2e.mcp.support.fixture.plugin.PluginFixtureStatusResourceHandler;
@@ -34,6 +36,7 @@ import java.util.stream.Stream;
 /**
  * Test support for packaged distribution plugin discovery fixtures.
  */
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class PackagedDistributionPluginFixtureSupport {
     
     private static final String HANDLER_PROVIDER_SERVICE_ENTRY = "META-INF/services/org.apache.shardingsphere.mcp.api.MCPHandlerProvider";
@@ -42,7 +45,9 @@ public final class PackagedDistributionPluginFixtureSupport {
     
     private static final List<String> DIRECTORY_ENTRIES = List.of("META-INF/", "META-INF/services/", "META-INF/shardingsphere-mcp/", "META-INF/shardingsphere-mcp/mcp-descriptors/");
     
-    private static final List<String> OFFICIAL_FEATURE_ARTIFACT_IDS = List.of("shardingsphere-mcp-feature-encrypt", "shardingsphere-mcp-feature-mask");
+    private static final List<String> OFFICIAL_FEATURE_ARTIFACT_IDS = List.of(
+            "shardingsphere-mcp-feature-encrypt", "shardingsphere-mcp-feature-mask", "shardingsphere-mcp-feature-broadcast",
+            "shardingsphere-mcp-feature-readwrite-splitting", "shardingsphere-mcp-feature-shadow", "shardingsphere-mcp-feature-sharding");
     
     private static final List<Class<?>> FIXTURE_PLUGIN_CLASSES = List.of(
             PluginFixtureHandlerProvider.class, PluginFixturePingToolHandler.class, PluginFixtureStatusResourceHandler.class);
@@ -95,9 +100,6 @@ public final class PackagedDistributionPluginFixtureSupport {
                 meta:
                   org.apache.shardingsphere/purpose: test-fixture-plugin
             """;
-    
-    private PackagedDistributionPluginFixtureSupport() {
-    }
     
     /**
      * Create one fixture plugin jar under packaged distribution plugins directory.

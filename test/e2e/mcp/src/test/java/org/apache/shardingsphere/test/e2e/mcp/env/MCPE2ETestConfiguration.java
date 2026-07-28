@@ -27,7 +27,7 @@ import java.util.Properties;
 @RequiredArgsConstructor
 final class MCPE2ETestConfiguration {
     
-    private static final MCPE2ETestConfiguration INSTANCE = new MCPE2ETestConfiguration(EnvironmentPropertiesLoader.loadProperties("env/e2e-env.properties"));
+    private static final MCPE2ETestConfiguration INSTANCE = new MCPE2ETestConfiguration(EnvironmentPropertiesLoader.loadProperties());
     
     private final Properties props;
     
@@ -35,38 +35,17 @@ final class MCPE2ETestConfiguration {
         return INSTANCE;
     }
     
-    boolean isContractEnabled() {
-        return getBoolean("mcp.e2e.contract.enabled", false);
-    }
-    
-    boolean isProductionMySQLEnabled() {
-        return getBoolean("mcp.e2e.production.mysql.enabled", false);
-    }
-    
-    boolean isProductionStdioEnabled() {
-        return getBoolean("mcp.e2e.production.stdio.enabled", false);
-    }
-    
-    boolean isDistributionEnabled() {
-        return getBoolean("mcp.e2e.distribution.enabled", false);
-    }
-    
-    boolean isLLMEnabled() {
-        return getBoolean("mcp.e2e.llm.enabled", false);
-    }
-    
-    private boolean getBoolean(final String key, final boolean defaultValue) {
-        String value = props.getProperty(key);
-        if (null == value) {
-            return defaultValue;
+    boolean isDockerRunType() {
+        boolean result = false;
+        for (String each : EnvironmentPropertiesLoader.getListValue(props, "e2e.run.type")) {
+            String runType = each.toUpperCase(Locale.ENGLISH);
+            if (!"DOCKER".equals(runType) && !"NATIVE".equals(runType)) {
+                throw new IllegalStateException(String.format("Unsupported MCP E2E run type `%s`.", each));
+            }
+            if ("DOCKER".equals(runType)) {
+                result = true;
+            }
         }
-        String trimmedValue = value.trim().toLowerCase(Locale.ENGLISH);
-        if ("true".equals(trimmedValue)) {
-            return true;
-        }
-        if ("false".equals(trimmedValue)) {
-            return false;
-        }
-        return defaultValue;
+        return result;
     }
 }

@@ -27,6 +27,7 @@ import org.apache.shardingsphere.database.protocol.postgresql.packet.command.que
 import org.apache.shardingsphere.database.protocol.postgresql.packet.command.query.simple.PostgreSQLComQueryPacket;
 import org.apache.shardingsphere.database.protocol.postgresql.packet.generic.PostgreSQLCommandCompletePacket;
 import org.apache.shardingsphere.database.protocol.postgresql.packet.handshake.PostgreSQLParameterStatusPacket;
+import org.apache.shardingsphere.database.exception.core.exception.data.InvalidParameterValueException;
 import org.apache.shardingsphere.infra.hint.HintValueContext;
 import org.apache.shardingsphere.infra.spi.type.typed.TypedSPILoader;
 import org.apache.shardingsphere.proxy.backend.handler.ProxyBackendHandler;
@@ -37,6 +38,7 @@ import org.apache.shardingsphere.proxy.backend.response.header.query.QueryHeader
 import org.apache.shardingsphere.proxy.backend.response.header.query.QueryResponseHeader;
 import org.apache.shardingsphere.proxy.backend.response.header.update.UpdateResponseHeader;
 import org.apache.shardingsphere.proxy.backend.session.ConnectionSession;
+import org.apache.shardingsphere.proxy.backend.postgresql.response.header.query.PostgreSQLQueryHeaderBuilder;
 import org.apache.shardingsphere.proxy.frontend.command.executor.ResponseType;
 import org.apache.shardingsphere.proxy.frontend.postgresql.command.PortalContext;
 import org.apache.shardingsphere.sql.parser.statement.core.segment.dal.VariableAssignSegment;
@@ -47,6 +49,7 @@ import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dal.Se
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.dml.InsertStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.tcl.CommitStatement;
 import org.apache.shardingsphere.sql.parser.statement.core.statement.type.tcl.RollbackStatement;
+import org.apache.shardingsphere.sql.parser.statement.postgresql.dal.PostgreSQLResetParameterStatement;
 import org.apache.shardingsphere.test.infra.framework.extension.mock.AutoMockExtension;
 import org.apache.shardingsphere.test.infra.framework.extension.mock.StaticMockSettings;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,6 +64,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -71,6 +75,7 @@ import java.util.stream.Stream;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.isA;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -112,7 +117,9 @@ class PostgreSQLComQueryExecutorTest {
     @Test
     void assertExecuteQueryWithColumnDescription() throws SQLException, ReflectiveOperationException {
         QueryResponseHeader queryResponseHeader = mock(QueryResponseHeader.class);
-        when(queryResponseHeader.getQueryHeaders()).thenReturn(Collections.singletonList(new QueryHeader("schema", "table", "label", "column", 1, "type", 2, 3, true, true, true, true)));
+        when(queryResponseHeader.getQueryHeaders()).thenReturn(
+                Collections.singletonList(new QueryHeader("schema", "table", "label", "column", Types.STRUCT, "record_type", 2, 3, true, true, true, true,
+                        Collections.singletonMap(PostgreSQLQueryHeaderBuilder.TYPE_OID, 2249))));
         when(proxyBackendHandler.execute()).thenReturn(queryResponseHeader);
         Collection<DatabasePacket> actual = queryExecutor.execute();
         PostgreSQLRowDescriptionPacket rowDescriptionPacket = (PostgreSQLRowDescriptionPacket) actual.iterator().next();
@@ -123,7 +130,7 @@ class PostgreSQLComQueryExecutorTest {
         assertThat(columnDescription.getColumnName(), is("label"));
         assertThat(columnDescription.getColumnIndex(), is(1));
         assertThat(columnDescription.getColumnLength(), is(2));
-        assertThat(columnDescription.getTypeOID(), is(new PostgreSQLColumnDescription("column", 1, 1, 2, "type").getTypeOID()));
+        assertThat(columnDescription.getTypeOID(), is(2249));
         assertThat(queryExecutor.getResponseType(), is(ResponseType.QUERY));
     }
     
@@ -181,6 +188,61 @@ class PostgreSQLComQueryExecutorTest {
         assertThat(getParameterStatusValue(secondStatusPacket), is("64MB"));
         assertThat(queryExecutor.getResponseType(), is(ResponseType.UPDATE));
         verify(portalContext, never()).closeAll();
+    }
+    
+    @Test
+    void assertExecuteUpdateWithClientEncoding() throws SQLException, ReflectiveOperationException {
+        VariableAssignSegment assignSegment = new VariableAssignSegment(0, 0, new VariableSegment(0, 0, "client_encoding"), "'UTF8'");
+        UpdateResponseHeader updateResponseHeader = new UpdateResponseHeader(new SetStatement(DATABASE_TYPE, Collections.singletonList(assignSegment)));
+        when(proxyBackendHandler.execute()).thenReturn(updateResponseHeader);
+        Collection<DatabasePacket> actual = queryExecutor.execute();
+        Iterator<DatabasePacket> iterator = actual.iterator();
+        PostgreSQLCommandCompletePacket commandCompletePacket = (PostgreSQLCommandCompletePacket) iterator.next();
+        PostgreSQLParameterStatusPacket parameterStatusPacket = (PostgreSQLParameterStatusPacket) iterator.next();
+        assertThat(actual.size(), is(2));
+        assertThat(getSqlCommand(commandCompletePacket), is("SET"));
+        assertThat(getParameterStatusKey(parameterStatusPacket), is("client_encoding"));
+        assertThat(getParameterStatusValue(parameterStatusPacket), is("UTF8"));
+    }
+    
+    @Test
+    void assertExecuteUpdateWithClientEncodingDefault() throws SQLException, ReflectiveOperationException {
+        VariableAssignSegment assignSegment = new VariableAssignSegment(0, 0, new VariableSegment(0, 0, "client_encoding"), "DEFAULT");
+        UpdateResponseHeader updateResponseHeader = new UpdateResponseHeader(new SetStatement(DATABASE_TYPE, Collections.singletonList(assignSegment)));
+        when(proxyBackendHandler.execute()).thenReturn(updateResponseHeader);
+        Collection<DatabasePacket> actual = queryExecutor.execute();
+        PostgreSQLParameterStatusPacket parameterStatusPacket = (PostgreSQLParameterStatusPacket) new ArrayList<>(actual).get(1);
+        assertThat(getParameterStatusValue(parameterStatusPacket), is("UTF8"));
+    }
+    
+    @Test
+    void assertExecuteUpdateWithClientEncodingAlias() throws SQLException, ReflectiveOperationException {
+        VariableAssignSegment assignSegment = new VariableAssignSegment(0, 0, new VariableSegment(0, 0, "client_encoding"), "'unicode'");
+        UpdateResponseHeader updateResponseHeader = new UpdateResponseHeader(new SetStatement(DATABASE_TYPE, Collections.singletonList(assignSegment)));
+        when(proxyBackendHandler.execute()).thenReturn(updateResponseHeader);
+        Collection<DatabasePacket> actual = queryExecutor.execute();
+        PostgreSQLParameterStatusPacket parameterStatusPacket = (PostgreSQLParameterStatusPacket) new ArrayList<>(actual).get(1);
+        assertThat(getParameterStatusValue(parameterStatusPacket), is("UTF8"));
+    }
+    
+    @Test
+    void assertExecuteUpdateWithResetClientEncoding() throws SQLException, ReflectiveOperationException {
+        UpdateResponseHeader updateResponseHeader = new UpdateResponseHeader(new PostgreSQLResetParameterStatement(DATABASE_TYPE, "client_encoding"));
+        when(proxyBackendHandler.execute()).thenReturn(updateResponseHeader);
+        Collection<DatabasePacket> actual = queryExecutor.execute();
+        Iterator<DatabasePacket> iterator = actual.iterator();
+        PostgreSQLCommandCompletePacket commandCompletePacket = (PostgreSQLCommandCompletePacket) iterator.next();
+        PostgreSQLParameterStatusPacket parameterStatusPacket = (PostgreSQLParameterStatusPacket) iterator.next();
+        assertThat(actual.size(), is(2));
+        assertThat(getSqlCommand(commandCompletePacket), is("RESET"));
+        assertThat(getParameterStatusKey(parameterStatusPacket), is("client_encoding"));
+        assertThat(getParameterStatusValue(parameterStatusPacket), is("UTF8"));
+    }
+    
+    @Test
+    void assertExecuteWithInvalidClientEncoding() throws SQLException {
+        when(proxyBackendHandler.execute()).thenThrow(new InvalidParameterValueException("client_encoding", "latin1"));
+        assertThrows(InvalidParameterValueException.class, () -> queryExecutor.execute());
     }
     
     @Test

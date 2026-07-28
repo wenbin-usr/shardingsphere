@@ -31,6 +31,8 @@ import org.apache.shardingsphere.proxy.backend.connector.jdbc.statement.JDBCBack
 import org.apache.shardingsphere.proxy.backend.session.transaction.TransactionStatus;
 import org.apache.shardingsphere.sql.parser.statement.core.enums.TransactionIsolationLevel;
 
+import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -56,8 +58,6 @@ public final class ConnectionSession {
     
     private volatile boolean readOnly;
     
-    private TransactionIsolationLevel defaultIsolationLevel;
-    
     private TransactionIsolationLevel isolationLevel;
     
     private final ProxyDatabaseConnectionManager databaseConnectionManager;
@@ -65,13 +65,19 @@ public final class ConnectionSession {
     @SuppressWarnings("rawtypes")
     private final ExecutorStatementManager statementManager;
     
+    private final PreparedStatementCacheContext preparedStatementCacheContext = new PreparedStatementCacheContext();
+    
     private final ServerPreparedStatementRegistry serverPreparedStatementRegistry = new ServerPreparedStatementRegistry();
     
     private final AtomicReference<ConnectionContext> connectionContext = new AtomicReference<>();
     
+    private final AtomicReference<Optional<PreparedStatementCacheKey>> currentPreparedStatementCacheKey = new AtomicReference<>(Optional.empty());
+    
     private final RequiredSessionVariableRecorder requiredSessionVariableRecorder = new RequiredSessionVariableRecorder();
     
     private volatile String processId;
+    
+    private volatile Map<String, String> connectionAttributes = Collections.emptyMap();
     
     private QueryContext queryContext;
     
@@ -80,7 +86,7 @@ public final class ConnectionSession {
         transactionStatus = new TransactionStatus();
         this.attributeMap = attributeMap;
         databaseConnectionManager = new ProxyDatabaseConnectionManager(this);
-        statementManager = new JDBCBackendStatement();
+        statementManager = new JDBCBackendStatement(this);
     }
     
     /**
@@ -129,6 +135,40 @@ public final class ConnectionSession {
      */
     public Optional<TransactionIsolationLevel> getIsolationLevel() {
         return Optional.ofNullable(isolationLevel);
+    }
+    
+    /**
+     * Begin prepared statement cache.
+     *
+     * @param cacheKey prepared statement cache key
+     */
+    public void beginPreparedStatementCache(final PreparedStatementCacheKey cacheKey) {
+        currentPreparedStatementCacheKey.set(Optional.of(cacheKey));
+    }
+    
+    /**
+     * Get current prepared statement cache key.
+     *
+     * @return current prepared statement cache key
+     */
+    public Optional<PreparedStatementCacheKey> getCurrentPreparedStatementCacheKey() {
+        return currentPreparedStatementCacheKey.get();
+    }
+    
+    /**
+     * Finish prepared statement cache.
+     */
+    public void finishPreparedStatementCache() {
+        currentPreparedStatementCacheKey.set(Optional.empty());
+    }
+    
+    /**
+     * Invalidate prepared statement cache.
+     *
+     * @param cacheKey prepared statement cache key
+     */
+    public void invalidatePreparedStatementCache(final PreparedStatementCacheKey cacheKey) {
+        preparedStatementCacheContext.invalidate(cacheKey);
     }
     
     /**

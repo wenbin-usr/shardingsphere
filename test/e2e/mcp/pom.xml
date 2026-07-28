@@ -32,9 +32,6 @@
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <maven.deploy.skip>true</maven.deploy.skip>
-        <mcp.e2e.llm.groups />
-        <mcp.e2e.llm.excludedGroups>llm-e2e</mcp.e2e.llm.excludedGroups>
-        <mcp.e2e.llm.enabled>false</mcp.e2e.llm.enabled>
     </properties>
     
     <dependencies>
@@ -43,6 +40,18 @@
             <artifactId>shardingsphere-test-e2e-env</artifactId>
             <version>${project.version}</version>
             <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-mcp-api</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-mcp-support</artifactId>
+            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -70,8 +79,54 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-mcp-feature-broadcast</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-mcp-feature-readwrite-splitting</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-mcp-feature-shadow</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-mcp-feature-sharding</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-infra-util</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-database-connector-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hive</groupId>
+            <artifactId>hive-jdbc</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -81,29 +136,52 @@
         </dependency>
     </dependencies>
     
-    <build>
-        <plugins>
-            <plugin>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <groups>${mcp.e2e.llm.groups}</groups>
-                    <excludedGroups>${mcp.e2e.llm.excludedGroups}</excludedGroups>
-                    <systemPropertyVariables>
-                        <mcp.e2e.llm.enabled>${mcp.e2e.llm.enabled}</mcp.e2e.llm.enabled>
-                    </systemPropertyVariables>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-    
     <profiles>
         <profile>
-            <id>llm-e2e</id>
+            <id>e2e.mcp</id>
             <properties>
-                <mcp.e2e.llm.groups>llm-e2e</mcp.e2e.llm.groups>
-                <mcp.e2e.llm.excludedGroups />
-                <mcp.e2e.llm.enabled>true</mcp.e2e.llm.enabled>
+                <e2e.run.type>DOCKER</e2e.run.type>
+                <mcp.e2e.container.image>apache/shardingsphere-mcp-e2e:local</mcp.e2e.container.image>
+                <test>*E2ETest</test>
             </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <test>${test}</test>
+                            <excludedGroups>llm-e2e</excludedGroups>
+                            <systemPropertyVariables>
+                                <e2e.run.type>${e2e.run.type}</e2e.run.type>
+                                <mcp.e2e.container.image>${mcp.e2e.container.image}</mcp.e2e.container.image>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>e2e.mcp.llm</id>
+            <properties>
+                <e2e.run.type>DOCKER</e2e.run.type>
+                <mcp.llm.ready-timeout-seconds>900</mcp.llm.ready-timeout-seconds>
+                <mcp.llm.request-timeout-seconds>600</mcp.llm.request-timeout-seconds>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>llm-e2e</groups>
+                            <systemPropertyVariables>
+                                <e2e.run.type>${e2e.run.type}</e2e.run.type>
+                                <mcp.llm.ready-timeout-seconds>${mcp.llm.ready-timeout-seconds}</mcp.llm.ready-timeout-seconds>
+                                <mcp.llm.request-timeout-seconds>${mcp.llm.request-timeout-seconds}</mcp.llm.request-timeout-seconds>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 </project>

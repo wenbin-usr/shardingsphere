@@ -25,7 +25,6 @@ import org.apache.groovy.util.Maps;
 import org.apache.shardingsphere.mcp.support.descriptor.MCPShardingSphereMetadataKeys;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -43,7 +42,7 @@ class MCPPromptSpecificationFactoryTest {
     @Test
     void assertCreatePromptSpecifications() {
         List<SyncPromptSpecification> actual = new MCPPromptSpecificationFactory().createPromptSpecifications();
-        Set<String> actualNames = new LinkedHashSet<>(actual.stream().map(each -> each.prompt().name()).toList());
+        List<String> actualNames = actual.stream().map(each -> each.prompt().name()).toList();
         assertTrue(actualNames.containsAll(Set.of("inspect_metadata", "safe_sql_execution", "recover_workflow", "plan_encrypt_rule", "plan_mask_rule")));
         SyncPromptSpecification actualPromptSpecification = findPrompt(actual, "safe_sql_execution");
         assertThat(actualPromptSpecification.prompt().title(), is("Safe SQL Execution"));
@@ -71,8 +70,9 @@ class MCPPromptSpecificationFactoryTest {
         assertRenderedLines(actualText, List.of(
                 "- database: logic_db",
                 "- sql_intent: count orders",
-                "2. Use database_gateway_execute_query only for one classifier-approved SELECT or EXPLAIN ANALYZE statement.",
-                "5. Never split or batch multiple SQL statements into one MCP call."));
+                "2. Use database_gateway_execute_query only for one parser-approved SELECT statement.",
+                "   Treat preview as database-aware validation and classification, not as a database dry run.",
+                "6. Never split or batch multiple SQL statements into one MCP call."));
     }
     
     @Test
@@ -82,7 +82,7 @@ class MCPPromptSpecificationFactoryTest {
                 "- plan_id: plan-1",
                 "- failure_summary: metadata mismatch",
                 "1. Treat plan_id as a current-session handle only. Do not reuse it across MCP sessions.",
-                "5. Preserve user-provided corrections when re-planning with database_gateway_plan_encrypt_rule or database_gateway_plan_mask_rule."));
+                "5. Preserve user-provided corrections when re-planning with the matching database_gateway_plan_* tool."));
     }
     
     @Test
@@ -94,7 +94,7 @@ class MCPPromptSpecificationFactoryTest {
                 "- column: phone",
                 "- algorithm_type: AES",
                 "2. Read shardingsphere://features/encrypt/algorithms before choosing algorithm_type.",
-                "4. Call database_gateway_plan_encrypt_rule with gathered logical names and any reviewed algorithm choices."));
+                "4. Call database_gateway_plan_encrypt_rule with gathered logical names, explicit rule column names, and reviewed algorithm choices."));
     }
     
     @Test
@@ -119,10 +119,20 @@ class MCPPromptSpecificationFactoryTest {
                 "plan_mask_rule", Map.of("database", "logic_db", "schema", "public", "table", "orders", "column", "phone", "algorithm_type", "KEEP_FIRST_N_LAST_M", "plan_id", "plan-1"));
         for (Entry<String, Map<String, Object>> entry : promptArguments.entrySet()) {
             String actual = readText(renderPrompt(entry.getKey(), entry.getValue()));
-            assertTrue(actual.contains("completion/complete"), () -> "Missing completion guidance in " + entry.getKey());
             assertTrue(actual.contains("do not guess"), () -> "Missing no-guess guidance in " + entry.getKey());
             assertTrue(actual.contains("Final answer rule:"), () -> "Missing final answer rule heading in " + entry.getKey());
             assertTrue(actual.contains("Summarize confirmed facts, the selected MCP path, and any required next user action."), () -> "Missing final answer rule in " + entry.getKey());
+        }
+    }
+    
+    @Test
+    void assertMetadataAndWorkflowPromptsContainCompletionGuidance() {
+        Map<String, Map<String, Object>> promptArguments = Map.of(
+                "inspect_metadata", Map.of("database", "logic_db", "schema", "public", "query", "orders"),
+                "safe_sql_execution", Map.of("database", "logic_db", "schema", "public", "sql_intent", "count orders"),
+                "recover_workflow", Map.of("plan_id", "plan-1", "failure_summary", "metadata mismatch"));
+        for (Entry<String, Map<String, Object>> entry : promptArguments.entrySet()) {
+            assertTrue(readText(renderPrompt(entry.getKey(), entry.getValue())).contains("completion/complete"), () -> "Missing completion guidance in " + entry.getKey());
         }
     }
     

@@ -47,6 +47,11 @@ import java.util.Map;
  */
 public final class ShadowWorkflowPlanningService {
     
+    private static final List<String> SUPPORTED_RULE_OPERATION_TYPES = List.of(
+            WorkflowLifecycle.OPERATION_CREATE, WorkflowLifecycle.OPERATION_ALTER, WorkflowLifecycle.OPERATION_DROP);
+    
+    private static final List<String> SUPPORTED_CLEANUP_OPERATION_TYPES = List.of(WorkflowLifecycle.OPERATION_DROP);
+    
     private static final List<String> RULE_INTERACTION_STEPS = List.of(
             "Confirm database, rule name, storage units, table and algorithm",
             "Inspect DistSQL-visible shadow rules, table rules and algorithms",
@@ -97,13 +102,16 @@ public final class ShadowWorkflowPlanningService {
                                             final ShadowRuleWorkflowRequest request) {
         WorkflowContextSnapshot result = workflowSessionContext.getOrCreate(request.getPlanId());
         ShadowRuleWorkflowRequest mergedRequest = prepareSnapshot(result, request, ShadowFeatureDefinition.RULE_WORKFLOW_KIND,
-                resolveIntent(request, WorkflowLifecycle.OPERATION_CREATE), "Shadow rule workflow plan.", RULE_INTERACTION_STEPS);
+                WorkflowLifecycle.OPERATION_CREATE, "Shadow rule workflow plan.", RULE_INTERACTION_STEPS);
         result.getResourceUriTemplates().addAll(List.of(ShadowFeatureDefinition.STORAGE_UNITS_RESOURCE_URI,
                 ShadowFeatureDefinition.SINGLE_TABLES_RESOURCE_URI, ShadowFeatureDefinition.SINGLE_TABLE_RESOURCE_URI));
         planningSupport.applyResolvedIntent(mergedRequest, result.getClarifiedIntent());
+        if (!planningSupport.ensureSupportedOperationType(result.getClarifiedIntent(), SUPPORTED_RULE_OPERATION_TYPES, result)) {
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
+        }
         planAlgorithmsIfRequired(queryFacade, mergedRequest, result);
         if (!ensureRulePlanningContext(mergedRequest, result.getClarifiedIntent(), result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
         }
         if (!isReadyForAlgorithmArtifactPlanning(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, WorkflowLifecycle.STATUS_CLARIFYING);
@@ -128,11 +136,14 @@ public final class ShadowWorkflowPlanningService {
                                                         final ShadowDefaultAlgorithmWorkflowRequest request) {
         WorkflowContextSnapshot result = workflowSessionContext.getOrCreate(request.getPlanId());
         ShadowDefaultAlgorithmWorkflowRequest mergedRequest = prepareSnapshot(result, request, ShadowFeatureDefinition.DEFAULT_ALGORITHM_WORKFLOW_KIND,
-                resolveIntent(request, WorkflowLifecycle.OPERATION_CREATE), "Default shadow algorithm workflow plan.", DEFAULT_ALGORITHM_INTERACTION_STEPS);
+                WorkflowLifecycle.OPERATION_CREATE, "Default shadow algorithm workflow plan.", DEFAULT_ALGORITHM_INTERACTION_STEPS);
         planningSupport.applyResolvedIntent(mergedRequest, result.getClarifiedIntent());
+        if (!planningSupport.ensureSupportedOperationType(result.getClarifiedIntent(), SUPPORTED_RULE_OPERATION_TYPES, result)) {
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
+        }
         planAlgorithmsIfRequired(queryFacade, mergedRequest, result);
         if (!ensureDefaultAlgorithmPlanningContext(mergedRequest, result.getClarifiedIntent(), result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
         }
         if (!ensureDefaultAlgorithmType(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, WorkflowLifecycle.STATUS_FAILED);
@@ -157,10 +168,13 @@ public final class ShadowWorkflowPlanningService {
                                                         final ShadowAlgorithmCleanupWorkflowRequest request) {
         WorkflowContextSnapshot result = workflowSessionContext.getOrCreate(request.getPlanId());
         ShadowAlgorithmCleanupWorkflowRequest mergedRequest = prepareSnapshot(result, request, ShadowFeatureDefinition.ALGORITHM_CLEANUP_WORKFLOW_KIND,
-                resolveIntent(request, WorkflowLifecycle.OPERATION_DROP), "Shadow algorithm cleanup workflow plan.", CLEANUP_INTERACTION_STEPS);
+                WorkflowLifecycle.OPERATION_DROP, "Shadow algorithm cleanup workflow plan.", CLEANUP_INTERACTION_STEPS);
         planningSupport.applyResolvedIntent(mergedRequest, result.getClarifiedIntent());
+        if (!planningSupport.ensureSupportedOperationType(result.getClarifiedIntent(), SUPPORTED_CLEANUP_OPERATION_TYPES, result)) {
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
+        }
         if (!ensureCleanupPlanningContext(mergedRequest, result.getClarifiedIntent(), result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
         }
         List<Map<String, Object>> algorithms = inspectionService.queryAlgorithms(queryFacade, mergedRequest.getDatabase());
         List<Map<String, Object>> tableRules = inspectionService.queryTableRules(queryFacade, mergedRequest.getDatabase());
@@ -174,31 +188,26 @@ public final class ShadowWorkflowPlanningService {
     }
     
     private ShadowRuleWorkflowRequest prepareSnapshot(final WorkflowContextSnapshot snapshot, final ShadowRuleWorkflowRequest request, final WorkflowKind workflowKind,
-                                                      final ClarifiedIntent clarifiedIntent, final String summary, final List<String> interactionSteps) {
-        return planningSupport.prepareSnapshot(snapshot, workflowKind, ShadowRuleWorkflowRequest.merge(snapshot.getRequest(), request), null,
-                clarifiedIntent, summary, interactionSteps, VALIDATION_LAYERS);
+                                                      final String defaultOperationType, final String summary, final List<String> interactionSteps) {
+        ShadowRuleWorkflowRequest result = ShadowRuleWorkflowRequest.merge(snapshot.getRequest(), request);
+        return planningSupport.prepareSnapshot(snapshot, workflowKind, result, null,
+                planningSupport.createOperationIntent(result, defaultOperationType), summary, interactionSteps, VALIDATION_LAYERS);
     }
     
     private ShadowDefaultAlgorithmWorkflowRequest prepareSnapshot(final WorkflowContextSnapshot snapshot, final ShadowDefaultAlgorithmWorkflowRequest request,
-                                                                  final WorkflowKind workflowKind, final ClarifiedIntent clarifiedIntent, final String summary,
+                                                                  final WorkflowKind workflowKind, final String defaultOperationType, final String summary,
                                                                   final List<String> interactionSteps) {
-        return planningSupport.prepareSnapshot(snapshot, workflowKind, ShadowDefaultAlgorithmWorkflowRequest.merge(snapshot.getRequest(), request), null,
-                clarifiedIntent, summary, interactionSteps, VALIDATION_LAYERS);
+        ShadowDefaultAlgorithmWorkflowRequest result = ShadowDefaultAlgorithmWorkflowRequest.merge(snapshot.getRequest(), request);
+        return planningSupport.prepareSnapshot(snapshot, workflowKind, result, null,
+                planningSupport.createOperationIntent(result, defaultOperationType), summary, interactionSteps, VALIDATION_LAYERS);
     }
     
     private ShadowAlgorithmCleanupWorkflowRequest prepareSnapshot(final WorkflowContextSnapshot snapshot, final ShadowAlgorithmCleanupWorkflowRequest request,
-                                                                  final WorkflowKind workflowKind, final ClarifiedIntent clarifiedIntent, final String summary,
+                                                                  final WorkflowKind workflowKind, final String defaultOperationType, final String summary,
                                                                   final List<String> interactionSteps) {
-        return planningSupport.prepareSnapshot(snapshot, workflowKind, ShadowAlgorithmCleanupWorkflowRequest.merge(snapshot.getRequest(), request), null,
-                clarifiedIntent, summary, interactionSteps, VALIDATION_LAYERS);
-    }
-    
-    private ClarifiedIntent resolveIntent(final WorkflowRequest request, final String defaultOperationType) {
-        ClarifiedIntent result = new ClarifiedIntent();
-        String operationType = request.getOperationType();
-        result.setOperationType(operationType.isEmpty() ? defaultOperationType : operationType);
-        result.setFieldSemantics("DistSQL-visible shadow rule and algorithm fields only.");
-        return result;
+        ShadowAlgorithmCleanupWorkflowRequest result = ShadowAlgorithmCleanupWorkflowRequest.merge(snapshot.getRequest(), request);
+        return planningSupport.prepareSnapshot(snapshot, workflowKind, result, null,
+                planningSupport.createFixedOperationIntent(result, defaultOperationType), summary, interactionSteps, VALIDATION_LAYERS);
     }
     
     private boolean ensureRulePlanningContext(final ShadowRuleWorkflowRequest request, final ClarifiedIntent clarifiedIntent, final WorkflowContextSnapshot snapshot) {

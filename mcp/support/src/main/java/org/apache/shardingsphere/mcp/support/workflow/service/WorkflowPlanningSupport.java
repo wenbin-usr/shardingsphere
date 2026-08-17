@@ -22,11 +22,12 @@ import org.apache.shardingsphere.mcp.api.exception.MCPInvalidRequestException;
 import org.apache.shardingsphere.mcp.support.database.exception.DatabaseCapabilityNotFoundException;
 import org.apache.shardingsphere.mcp.support.database.spi.MCPFeatureQueryFacade;
 import org.apache.shardingsphere.mcp.support.database.spi.MCPMetadataQueryFacade;
+import org.apache.shardingsphere.mcp.support.workflow.WorkflowSessionContext;
 import org.apache.shardingsphere.mcp.support.workflow.model.AlgorithmPropertyRequirement;
 import org.apache.shardingsphere.mcp.support.workflow.model.ClarifiedIntent;
 import org.apache.shardingsphere.mcp.support.workflow.model.InteractionPlan;
+import org.apache.shardingsphere.mcp.support.workflow.model.RuleWorkflowFeatureData;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowContextSnapshot;
-import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowFeatureData;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowFieldNames;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowIssue;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowIssueCode;
@@ -49,6 +50,42 @@ public final class WorkflowPlanningSupport {
     private final WorkflowAlgorithmRequirementCollector requirementCollector = new WorkflowAlgorithmRequirementCollector();
     
     /**
+     * Create workflow operation intent, leaving the operation unresolved when natural-language intent requires clarification.
+     *
+     * @param request workflow request
+     * @param defaultOperationType default operation type
+     * @return clarified workflow intent
+     */
+    public ClarifiedIntent createOperationIntent(final WorkflowRequest request, final String defaultOperationType) {
+        ClarifiedIntent result = new ClarifiedIntent();
+        if (!request.getOperationType().isEmpty()) {
+            result.setOperationType(request.getOperationType());
+        } else if (request.getNaturalLanguageIntent().isEmpty()) {
+            result.setOperationType(defaultOperationType);
+            result.getInferredValues().put(WorkflowFieldNames.OPERATION_TYPE, defaultOperationType);
+        }
+        return result;
+    }
+    
+    /**
+     * Create workflow operation intent for a workflow whose operation is fixed by its contract.
+     *
+     * @param request workflow request
+     * @param fixedOperationType fixed operation type
+     * @return clarified workflow intent
+     */
+    public ClarifiedIntent createFixedOperationIntent(final WorkflowRequest request, final String fixedOperationType) {
+        ClarifiedIntent result = new ClarifiedIntent();
+        if (request.getOperationType().isEmpty()) {
+            result.setOperationType(fixedOperationType);
+            result.getInferredValues().put(WorkflowFieldNames.OPERATION_TYPE, fixedOperationType);
+        } else {
+            result.setOperationType(request.getOperationType());
+        }
+        return result;
+    }
+    
+    /**
      * Apply resolved intent fields to the workflow request.
      *
      * @param request workflow request
@@ -56,7 +93,6 @@ public final class WorkflowPlanningSupport {
      */
     public void applyResolvedIntent(final WorkflowRequest request, final ClarifiedIntent clarifiedIntent) {
         request.setOperationType(clarifiedIntent.getOperationType());
-        request.setFieldSemantics(clarifiedIntent.getFieldSemantics());
     }
     
     /**
@@ -73,14 +109,14 @@ public final class WorkflowPlanningSupport {
      * @param <T> request type
      * @return prepared request
      */
-    public <T extends WorkflowRequest> T prepareSnapshot(final WorkflowContextSnapshot snapshot, final WorkflowKind workflowKind, final T request, final WorkflowFeatureData featureData,
+    public <T extends WorkflowRequest> T prepareSnapshot(final WorkflowContextSnapshot snapshot, final WorkflowKind workflowKind, final T request,
+                                                         final RuleWorkflowFeatureData featureData,
                                                          final ClarifiedIntent clarifiedIntent, final String summary,
                                                          final List<String> interactionSteps, final List<String> validationLayers) {
         WorkflowKind existingWorkflowKind = snapshot.getWorkflowKind();
         ShardingSpherePreconditions.checkState(null == existingWorkflowKind || existingWorkflowKind.equals(workflowKind),
                 () -> new MCPInvalidRequestException(String.format("plan_id `%s` belongs to workflow kind `%s`; call the matching planning tool or omit plan_id to start `%s`.",
                         snapshot.getPlanId(), existingWorkflowKind, workflowKind)));
-        request.setExecutionMode(WorkflowIntentResolverSupport.resolveExecutionMode(request, clarifiedIntent));
         snapshot.setWorkflowKind(workflowKind);
         snapshot.setRequest(request);
         snapshot.setFeatureData(featureData);
@@ -88,6 +124,18 @@ public final class WorkflowPlanningSupport {
         snapshot.clearPlanningState();
         snapshot.setClarifiedIntent(clarifiedIntent);
         return request;
+    }
+    
+    /**
+     * Persist a workflow whose planning flow was interrupted by a clarification or terminal failure.
+     *
+     * @param workflowSessionContext workflow session context
+     * @param snapshot workflow snapshot
+     * @return persisted workflow snapshot
+     */
+    public WorkflowContextSnapshot persistPlanningInterruption(final WorkflowSessionContext workflowSessionContext, final WorkflowContextSnapshot snapshot) {
+        String currentStep = WorkflowLifecycle.STATUS_FAILED.equals(snapshot.getStatus()) ? WorkflowLifecycle.STEP_FAILED : WorkflowLifecycle.STEP_CLARIFYING;
+        return workflowSessionContext.persist(snapshot, currentStep, snapshot.getStatus());
     }
     
     /**
@@ -132,6 +180,18 @@ public final class WorkflowPlanningSupport {
     public boolean ensureSupportedOperationType(final ClarifiedIntent clarifiedIntent, final Collection<String> supportedOperationTypes, final WorkflowContextSnapshot snapshot) {
         if (containsOperationType(supportedOperationTypes, clarifiedIntent.getOperationType())) {
             return true;
+        }
+        if (clarifiedIntent.getOperationType().isEmpty()) {
+            if (!clarifiedIntent.getUnresolvedFields().contains(WorkflowFieldNames.OPERATION_TYPE)) {
+                clarifiedIntent.getUnresolvedFields().add(WorkflowFieldNames.OPERATION_TYPE);
+            }
+            clarifiedIntent.getClarificationMessages().add("Please provide operation_type.");
+            snapshot.getIssues().add(new WorkflowIssue(WorkflowIssueCode.RULE_INPUT_REQUIRED, "error", WorkflowLifecycle.STEP_INTAKING,
+                    "Workflow operation type is required when natural_language_intent is provided.",
+                    String.format("Provide operation_type as one of: %s.", String.join(", ", supportedOperationTypes)), true,
+                    Map.of("missing_inputs", List.of(WorkflowFieldNames.OPERATION_TYPE), "supported_operation_types", supportedOperationTypes)));
+            snapshot.setStatus(WorkflowLifecycle.STATUS_CLARIFYING);
+            return false;
         }
         snapshot.getIssues().add(new WorkflowIssue(WorkflowIssueCode.WORKFLOW_STATUS_INVALID, "error", WorkflowLifecycle.STEP_INTAKING,
                 "Unsupported workflow operation type.", String.format("Use one of: %s.", String.join(", ", supportedOperationTypes)), false,

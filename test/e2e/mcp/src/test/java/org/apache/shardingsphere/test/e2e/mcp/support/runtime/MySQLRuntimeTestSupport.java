@@ -82,25 +82,6 @@ public final class MySQLRuntimeTestSupport {
     }
     
     /**
-     * Check whether Docker is available for Testcontainers-backed tests.
-     *
-     * @return whether Docker is available
-     */
-    public static boolean isDockerAvailable() {
-        return MySQLRuntimeDockerSupport.isDockerAvailable();
-    }
-    
-    /**
-     * Create Docker-required message with bounded readiness diagnostics.
-     *
-     * @param scenarioMessage scenario message
-     * @return Docker-required message
-     */
-    public static String createDockerRequiredMessage(final String scenarioMessage) {
-        return MySQLRuntimeDockerSupport.createDockerRequiredMessage(scenarioMessage);
-    }
-    
-    /**
      * Create runtime databases for the MySQL-backed runtime.
      *
      * @param container running container
@@ -153,7 +134,7 @@ public final class MySQLRuntimeTestSupport {
             String jdbcMetadataSchemaName = detectSchema(container);
             String resolvedPhysicalSchemaName = jdbcMetadataSchemaName.isEmpty() ? DATABASE_NAME : jdbcMetadataSchemaName;
             int totalOrders = querySingleInt(container, String.format(COUNT_ORDERS_SQL, resolvedPhysicalSchemaName));
-            LLMMySQLRuntimeFixture result = new LLMMySQLRuntimeFixture(container, logicalDatabase, totalOrders, createRuntimeDatabases(container, logicalDatabase));
+            LLMMySQLRuntimeFixture result = new LLMMySQLRuntimeFixture(container, totalOrders, createRuntimeDatabases(container, logicalDatabase));
             startupGuard.complete();
             return result;
         }
@@ -362,15 +343,14 @@ public final class MySQLRuntimeTestSupport {
     }
     
     @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-    @Getter
     public static final class LLMMySQLRuntimeFixture implements AutoCloseable {
         
         private final GenericContainer<?> container;
         
-        private final String schemaName;
-        
+        @Getter
         private final int totalOrders;
         
+        @Getter
         private final Map<String, RuntimeDatabaseConfiguration> runtimeDatabases;
         
         @Override

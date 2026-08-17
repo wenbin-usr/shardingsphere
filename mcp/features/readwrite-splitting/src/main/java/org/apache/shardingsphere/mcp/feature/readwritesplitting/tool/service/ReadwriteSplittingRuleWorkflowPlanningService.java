@@ -43,6 +43,9 @@ import java.util.Map;
  */
 public final class ReadwriteSplittingRuleWorkflowPlanningService {
     
+    private static final List<String> SUPPORTED_OPERATION_TYPES = List.of(
+            WorkflowLifecycle.OPERATION_CREATE, WorkflowLifecycle.OPERATION_ALTER, WorkflowLifecycle.OPERATION_DROP);
+    
     private static final List<String> INTERACTION_STEPS = List.of(
             "Confirm database, rule name, storage units, strategy and lifecycle",
             "Inspect DistSQL-visible readwrite-splitting rules",
@@ -54,8 +57,6 @@ public final class ReadwriteSplittingRuleWorkflowPlanningService {
     private static final List<String> VALIDATION_LAYERS = List.of("rules");
     
     private final WorkflowPlanningSupport planningSupport = new WorkflowPlanningSupport();
-    
-    private final ReadwriteSplittingWorkflowIntentResolver intentResolver = new ReadwriteSplittingWorkflowIntentResolver();
     
     private final ReadwriteSplittingInspectionService inspectionService = new ReadwriteSplittingInspectionService();
     
@@ -79,8 +80,11 @@ public final class ReadwriteSplittingRuleWorkflowPlanningService {
         ReadwriteSplittingRuleWorkflowRequest mergedRequest = prepareSnapshot(result, request);
         ClarifiedIntent clarifiedIntent = result.getClarifiedIntent();
         planningSupport.applyResolvedIntent(mergedRequest, clarifiedIntent);
+        if (!planningSupport.ensureSupportedOperationType(clarifiedIntent, SUPPORTED_OPERATION_TYPES, result)) {
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
+        }
         if (!ensurePlanningContext(mergedRequest, clarifiedIntent, result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
         }
         queryFacade.checkDatabaseCapability(mergedRequest.getDatabase());
         List<Map<String, Object>> existingRules = inspectionService.queryRules(queryFacade, mergedRequest.getDatabase());
@@ -101,7 +105,8 @@ public final class ReadwriteSplittingRuleWorkflowPlanningService {
     private ReadwriteSplittingRuleWorkflowRequest prepareSnapshot(final WorkflowContextSnapshot snapshot, final ReadwriteSplittingRuleWorkflowRequest request) {
         ReadwriteSplittingRuleWorkflowRequest result = ReadwriteSplittingRuleWorkflowRequest.merge(snapshot.getRequest(), request);
         planningSupport.prepareSnapshot(snapshot, ReadwriteSplittingFeatureDefinition.RULE_WORKFLOW_KIND, result, null,
-                intentResolver.resolveRuleIntent(result), "Readwrite-splitting rule workflow plan.", INTERACTION_STEPS, VALIDATION_LAYERS);
+                planningSupport.createOperationIntent(result, WorkflowLifecycle.OPERATION_CREATE),
+                "Readwrite-splitting rule workflow plan.", INTERACTION_STEPS, VALIDATION_LAYERS);
         snapshot.getResourceUriTemplates().add(ReadwriteSplittingFeatureDefinition.STORAGE_UNITS_RESOURCE_URI);
         return result;
     }

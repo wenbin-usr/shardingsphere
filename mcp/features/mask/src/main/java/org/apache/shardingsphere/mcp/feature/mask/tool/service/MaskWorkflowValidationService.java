@@ -19,15 +19,11 @@ package org.apache.shardingsphere.mcp.feature.mask.tool.service;
 
 import org.apache.shardingsphere.database.connector.core.metadata.identifier.IdentifierScope;
 import org.apache.shardingsphere.mask.spi.MaskAlgorithm;
-import org.apache.shardingsphere.mcp.support.database.spi.MCPFeatureExecutionFacade;
 import org.apache.shardingsphere.mcp.support.database.spi.MCPFeatureQueryFacade;
-import org.apache.shardingsphere.mcp.support.database.spi.MCPMetadataQueryFacade;
-import org.apache.shardingsphere.mcp.support.workflow.WorkflowSessionContext;
 import org.apache.shardingsphere.mcp.support.workflow.model.RuleWorkflowFeatureData;
 import org.apache.shardingsphere.mcp.support.workflow.model.ValidationReport;
 import org.apache.shardingsphere.mcp.support.workflow.model.ValidationSection;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowContextSnapshot;
-import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowIssue;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowIssueCode;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowLifecycle;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowRequest;
@@ -37,7 +33,6 @@ import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowArtifactBu
 import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowLifecycleUtils;
 import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowRuleValueUtils;
 import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowSecretReferenceUtils;
-import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowSynchronizationSupport;
 import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowValidationSupport;
 import org.apache.shardingsphere.mcp.support.workflow.spi.MCPWorkflowApplyArtifactValidator;
 import org.apache.shardingsphere.mcp.support.workflow.spi.MCPWorkflowRuntimeHandler;
@@ -59,14 +54,14 @@ public final class MaskWorkflowValidationService implements MCPWorkflowRuntimeHa
     
     private final MaskRuleInspectionService ruleInspectionService = new MaskRuleInspectionService();
     
-    private final WorkflowSynchronizationSupport workflowSynchronizationSupport = new WorkflowSynchronizationSupport(
-            WorkflowSynchronizationSupport.DEFAULT_SYNCHRONIZATION_WINDOW, WorkflowSynchronizationSupport.DEFAULT_POLL_INTERVAL);
-    
     @Override
-    public Map<String, Object> validate(final WorkflowSessionContext workflowSessionContext, final MCPMetadataQueryFacade metadataQueryFacade,
-                                        final MCPFeatureQueryFacade queryFacade, final MCPFeatureExecutionFacade executionFacade, final String sessionId,
-                                        final WorkflowContextSnapshot snapshot) {
-        return validationSupport.validateAndFinalize(workflowSessionContext, sessionId, snapshot, () -> createValidationReport(snapshot, queryFacade));
+    public ValidationReport validate(final WorkflowContextSnapshot snapshot, final MCPFeatureQueryFacade queryFacade) {
+        ValidationReport result = new ValidationReport();
+        queryFacade.checkDatabaseCapability(snapshot.getRequest().getDatabase());
+        List<Map<String, Object>> maskRules = ruleInspectionService.queryMaskRules(queryFacade, snapshot.getRequest().getDatabase(), snapshot.getRequest().getTable());
+        result.setRuleValidation(validateRules(snapshot, maskRules, result, queryFacade));
+        result.setOverallStatus(validationSupport.resolveOverallStatus(result.getRuleValidation()));
+        return result;
     }
     
     @Override
@@ -78,12 +73,6 @@ public final class MaskWorkflowValidationService implements MCPWorkflowRuntimeHa
         return result;
     }
     
-    @Override
-    public void synchronize(final WorkflowContextSnapshot snapshot, final MCPMetadataQueryFacade metadataQueryFacade,
-                            final MCPFeatureQueryFacade queryFacade, final MCPFeatureExecutionFacade executionFacade, final String sessionId) {
-        workflowSynchronizationSupport.synchronize(() -> createValidationReport(snapshot, queryFacade));
-    }
-    
     private void addRuleDistSQLIssues(final List<Map<String, Object>> issues, final WorkflowContextSnapshot snapshot, final String sql, final String displaySql) {
         if (!isMaskRuleDistSQL(sql)) {
             return;
@@ -93,7 +82,7 @@ public final class MaskWorkflowValidationService implements MCPWorkflowRuntimeHa
             return;
         }
         if (!WorkflowAlgorithmUtils.isAlgorithmServiceAvailable(MaskAlgorithm.class, request.getAlgorithmType(), request.getPrimaryAlgorithmProperties())) {
-            issues.add(createValidationIssue(String.format("Generated mask DistSQL references algorithm `%s`, but it cannot be loaded or initialized by MaskAlgorithm SPI.",
+            issues.add(validationSupport.createSQLExecutabilityIssue(String.format("Generated mask DistSQL references algorithm `%s`, but it cannot be loaded or initialized by MaskAlgorithm SPI.",
                     request.getAlgorithmType()), displaySql));
         }
     }
@@ -101,20 +90,6 @@ public final class MaskWorkflowValidationService implements MCPWorkflowRuntimeHa
     private boolean isMaskRuleDistSQL(final String sql) {
         String actualSQL = sql.trim().toUpperCase(Locale.ENGLISH);
         return actualSQL.startsWith("CREATE MASK RULE");
-    }
-    
-    private Map<String, Object> createValidationIssue(final String message, final String sql) {
-        return new WorkflowIssue(WorkflowIssueCode.SQL_EXECUTABILITY_FAILED, "error", WorkflowLifecycle.STEP_REVIEW,
-                message, "Regenerate the workflow artifact through the feature planner before approval.", true, Map.of("sql", sql)).toMap();
-    }
-    
-    private ValidationReport createValidationReport(final WorkflowContextSnapshot snapshot, final MCPFeatureQueryFacade queryFacade) {
-        ValidationReport result = new ValidationReport();
-        queryFacade.checkDatabaseCapability(snapshot.getRequest().getDatabase());
-        List<Map<String, Object>> maskRules = ruleInspectionService.queryMaskRules(queryFacade, snapshot.getRequest().getDatabase(), snapshot.getRequest().getTable());
-        result.setRuleValidation(validateRules(snapshot, maskRules, result, queryFacade));
-        result.setOverallStatus(validationSupport.resolveOverallStatus(result.getRuleValidation()));
-        return result;
     }
     
     private ValidationSection validateRules(final WorkflowContextSnapshot snapshot, final List<Map<String, Object>> maskRules,
@@ -154,7 +129,7 @@ public final class MaskWorkflowValidationService implements MCPWorkflowRuntimeHa
     }
     
     private Optional<RuleWorkflowFeatureData> getRuleFeatureData(final WorkflowContextSnapshot snapshot) {
-        return snapshot.getFeatureData() instanceof RuleWorkflowFeatureData ? Optional.of((RuleWorkflowFeatureData) snapshot.getFeatureData()) : Optional.empty();
+        return Optional.ofNullable(snapshot.getFeatureData());
     }
     
     private ValidationSection validateExpectedRules(final WorkflowContextSnapshot snapshot, final List<Map<String, Object>> expectedRules, final List<Map<String, Object>> actualRules,

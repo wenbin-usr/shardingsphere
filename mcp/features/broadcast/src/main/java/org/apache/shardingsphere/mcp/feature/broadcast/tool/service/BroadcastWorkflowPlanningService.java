@@ -38,6 +38,8 @@ import java.util.Map;
  */
 public final class BroadcastWorkflowPlanningService {
     
+    private static final List<String> SUPPORTED_OPERATION_TYPES = List.of(WorkflowLifecycle.OPERATION_CREATE, WorkflowLifecycle.OPERATION_DROP);
+    
     private static final List<String> INTERACTION_STEPS = List.of(
             "Confirm database, broadcast tables and target lifecycle",
             "Inspect DistSQL-visible broadcast rules",
@@ -49,8 +51,6 @@ public final class BroadcastWorkflowPlanningService {
     private static final List<String> VALIDATION_LAYERS = List.of("rules");
     
     private final WorkflowPlanningSupport planningSupport = new WorkflowPlanningSupport();
-    
-    private final BroadcastWorkflowIntentResolver intentResolver = new BroadcastWorkflowIntentResolver();
     
     private final BroadcastRuleInspectionService ruleInspectionService = new BroadcastRuleInspectionService();
     
@@ -69,6 +69,9 @@ public final class BroadcastWorkflowPlanningService {
         BroadcastWorkflowRequest mergedRequest = prepareSnapshot(result, request);
         ClarifiedIntent clarifiedIntent = result.getClarifiedIntent();
         planningSupport.applyResolvedIntent(mergedRequest, clarifiedIntent);
+        if (!planningSupport.ensureSupportedOperationType(clarifiedIntent, SUPPORTED_OPERATION_TYPES, result)) {
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
+        }
         if (!request.getTable().isEmpty() && !request.getTables().isEmpty()) {
             result.getIssues().add(new WorkflowIssue(WorkflowIssueCode.RULE_INPUT_CONFLICT, "error", WorkflowLifecycle.STEP_INTAKING,
                     "Broadcast workflow accepts table or tables, but not both in the same request.",
@@ -76,7 +79,7 @@ public final class BroadcastWorkflowPlanningService {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, WorkflowLifecycle.STATUS_FAILED);
         }
         if (!ensurePlanningContext(mergedRequest, clarifiedIntent, result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
         }
         queryFacade.checkDatabaseCapability(mergedRequest.getDatabase());
         List<Map<String, Object>> existingRules = ruleInspectionService.queryBroadcastRules(queryFacade, mergedRequest.getDatabase());
@@ -95,7 +98,8 @@ public final class BroadcastWorkflowPlanningService {
             result.setTable(result.getTables().iterator().next());
         }
         return planningSupport.prepareSnapshot(snapshot, BroadcastFeatureDefinition.WORKFLOW_KIND, result, null,
-                intentResolver.resolve(result), "Broadcast workflow plan.", INTERACTION_STEPS, VALIDATION_LAYERS);
+                planningSupport.createOperationIntent(result, WorkflowLifecycle.OPERATION_CREATE),
+                "Broadcast workflow plan.", INTERACTION_STEPS, VALIDATION_LAYERS);
     }
     
     private boolean ensurePlanningContext(final BroadcastWorkflowRequest request, final ClarifiedIntent clarifiedIntent, final WorkflowContextSnapshot snapshot) {

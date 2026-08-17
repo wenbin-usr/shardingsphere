@@ -168,6 +168,7 @@ import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.s
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OracleAlterSystemStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OracleAnalyzeStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OracleAuditStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OracleCreatePackageStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OracleDropPackageStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OracleNoAuditStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.OraclePurgeStatementTestCase;
@@ -201,6 +202,7 @@ import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.s
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.flashback.OracleFlashbackDatabaseStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.flashback.OracleFlashbackTableStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.index.OracleAlterIndexTypeStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.index.OracleCreateIndexTypeStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.index.OracleDropIndexTypeStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.java.OracleAlterJavaStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ddl.dialect.oracle.java.OracleCreateJavaStatementTestCase;
@@ -385,6 +387,7 @@ import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.s
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.dml.standard.SelectStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.dml.standard.UpdateStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.plsql.CreateProcedureTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.plsql.OraclePLSQLBlockStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ral.AlterComputeNodeStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ral.AlterGlobalClockRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.ral.AlterLocalTransactionRuleStatementTestCase;
@@ -453,18 +456,23 @@ import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.s
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterDefaultShardingStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterShardingAuditorStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterShardingAutoTableRuleStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterShardingKeyGeneratorStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterShardingKeyGenerateStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterShardingTableReferenceRulesStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.AlterShardingTableRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateBroadcastTableRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateDefaultShardingStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateShardingAuditorStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateShardingAutoTableRuleStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateShardingKeyGeneratorStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateShardingKeyGenerateStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateShardingTableReferenceRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.CreateShardingTableRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropBroadcastTableRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropDefaultShardingStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropShardingAlgorithmStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropShardingAuditorStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropShardingKeyGenerateStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropShardingKeyGeneratorStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropShardingTableReferenceRuleStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rdl.rule.sharding.DropShardingTableRuleStatementTestCase;
@@ -491,6 +499,7 @@ import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.s
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowDefaultShardingStrategyStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowShardingAlgorithmsStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowShardingAuditorsStatementTestCase;
+import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowShardingKeyGenerateStrategiesStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowShardingKeyGeneratorsStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowShardingTableNodesStatementTestCase;
 import org.apache.shardingsphere.test.it.sql.parser.internal.cases.parser.jaxb.statement.rql.rule.sharding.ShowShardingTableReferenceRulesStatementTestCase;
@@ -993,6 +1002,9 @@ public final class RootSQLParserTestCases {
     @XmlElement(name = "drop-package")
     private final List<OracleDropPackageStatementTestCase> dropPackageTestCases = new LinkedList<>();
     
+    @XmlElement(name = "create-package")
+    private final List<OracleCreatePackageStatementTestCase> createPackageTestCases = new LinkedList<>();
+    
     @XmlElement(name = "create-dimension")
     private final List<OracleCreateDimensionStatementTestCase> createDimensionTestCases = new LinkedList<>();
     
@@ -1001,6 +1013,9 @@ public final class RootSQLParserTestCases {
     
     @XmlElement(name = "create-procedure")
     private final List<CreateProcedureTestCase> createProcedureTestCases = new LinkedList<>();
+    
+    @XmlElement(name = "plsql-block")
+    private final List<OraclePLSQLBlockStatementTestCase> plsqlBlockTestCases = new LinkedList<>();
     
     @XmlElement(name = "create-server")
     private final List<CreateServerStatementTestCase> createServerTestCases = new LinkedList<>();
@@ -1203,6 +1218,12 @@ public final class RootSQLParserTestCases {
     @XmlElement(name = "alter-sharding-table-rule")
     private final List<AlterShardingTableRuleStatementTestCase> alterShardingTableRuleTestCases = new LinkedList<>();
     
+    @XmlElement(name = "alter-sharding-key-generator")
+    private final List<AlterShardingKeyGeneratorStatementTestCase> alterShardingKeyGeneratorTestCases = new LinkedList<>();
+    
+    @XmlElement(name = "alter-sharding-key-generate-strategy")
+    private final List<AlterShardingKeyGenerateStrategyStatementTestCase> alterShardingKeyGenerateStrategyTestCases = new LinkedList<>();
+    
     @XmlElement(name = "create-encrypt-rule")
     private final List<CreateEncryptRuleStatementTestCase> createEncryptRuleTestCases = new LinkedList<>();
     
@@ -1229,6 +1250,12 @@ public final class RootSQLParserTestCases {
     
     @XmlElement(name = "create-sharding-table-rule")
     private final List<CreateShardingTableRuleStatementTestCase> createShardingTableRuleTestCases = new LinkedList<>();
+    
+    @XmlElement(name = "create-sharding-key-generator")
+    private final List<CreateShardingKeyGeneratorStatementTestCase> createShardingKeyGeneratorTestCases = new LinkedList<>();
+    
+    @XmlElement(name = "create-sharding-key-generate-strategy")
+    private final List<CreateShardingKeyGenerateStrategyStatementTestCase> createShardingKeyGenerateStrategyTestCases = new LinkedList<>();
     
     @XmlElement(name = "drop-encrypt-rule")
     private final List<DropEncryptRuleStatementTestCase> dropEncryptRuleTestCases = new LinkedList<>();
@@ -1491,6 +1518,9 @@ public final class RootSQLParserTestCases {
     @XmlElement(name = "drop-sharding-key-generator")
     private final List<DropShardingKeyGeneratorStatementTestCase> dropShardingKeyGeneratorTestCases = new LinkedList<>();
     
+    @XmlElement(name = "drop-sharding-key-generate-strategy")
+    private final List<DropShardingKeyGenerateStrategyStatementTestCase> dropShardingKeyGenerateStrategyTestCases = new LinkedList<>();
+    
     @XmlElement(name = "drop-sharding-auditor")
     private final List<DropShardingAuditorStatementTestCase> dropShardingAuditorTestCases = new LinkedList<>();
     
@@ -1565,6 +1595,9 @@ public final class RootSQLParserTestCases {
     
     @XmlElement(name = "show-sharding-key-generators")
     private final List<ShowShardingKeyGeneratorsStatementTestCase> showShardingKeyGeneratorsTestCases = new LinkedList<>();
+    
+    @XmlElement(name = "show-sharding-key-generate-strategies")
+    private final List<ShowShardingKeyGenerateStrategiesStatementTestCase> showShardingKeyGenerateStrategiesTestCases = new LinkedList<>();
     
     @XmlElement(name = "show-default-sharding-strategy")
     private final List<ShowDefaultShardingStrategyStatementTestCase> showDefaultShardingStrategyTestCases = new LinkedList<>();
@@ -1676,6 +1709,9 @@ public final class RootSQLParserTestCases {
     
     @XmlElement(name = "alter-index-type")
     private final List<OracleAlterIndexTypeStatementTestCase> alterIndexTypeTestCases = new LinkedList<>();
+    
+    @XmlElement(name = "create-index-type")
+    private final List<OracleCreateIndexTypeStatementTestCase> createIndexTypeTestCases = new LinkedList<>();
     
     @XmlElement(name = "alter-lockdown-profile")
     private final List<OracleAlterLockdownProfileStatementTestCase> alterLockdownProfileTestCases = new LinkedList<>();

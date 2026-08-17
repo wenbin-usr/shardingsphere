@@ -17,46 +17,36 @@
 
 package org.apache.shardingsphere.test.e2e.mcp.llm.conversation;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import org.apache.shardingsphere.infra.util.json.JsonUtils;
+import org.apache.shardingsphere.infra.util.json.JsonException;
+import org.apache.shardingsphere.infra.util.json.JsonTypeReference;
+import org.apache.shardingsphere.infra.util.json.JsonEngine;
 
-import java.util.List;
 import java.util.Map;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 final class LLMMCPJsonValues {
     
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    
     static Map<String, Object> parseToolArguments(final String argumentsJson) {
         try {
-            return OBJECT_MAPPER.readValue(argumentsJson, new TypeReference<>() {
+            return JsonEngine.unmarshal(argumentsJson, new JsonTypeReference<Map<String, Object>>() {
             });
-        } catch (final JsonProcessingException ex) {
+        } catch (final JsonException ex) {
             throw new IllegalArgumentException("Invalid tool arguments JSON.", ex);
         }
     }
     
-    static List<List<Object>> castToRows(final Object value) {
-        return JsonUtils.fromJsonString(JsonUtils.toJsonString(value), new TypeReference<>() {
-        });
-    }
-    
+    @SuppressWarnings("unchecked")
     static Map<String, Object> castToMap(final Object value) {
-        return JsonUtils.fromJsonString(JsonUtils.toJsonString(value), new TypeReference<>() {
-        });
-    }
-    
-    static <T> List<T> castToList(final Object value) {
-        if (null == value) {
-            return List.of();
+        if (!(value instanceof Map)) {
+            throw new IllegalArgumentException("Expected a JSON object.");
         }
-        return JsonUtils.fromJsonString(JsonUtils.toJsonString(value), new TypeReference<>() {
-        });
+        Map<?, ?> result = (Map<?, ?>) value;
+        if (!result.keySet().stream().allMatch(String.class::isInstance)) {
+            throw new IllegalArgumentException("Expected a JSON object with string keys.");
+        }
+        return (Map<String, Object>) result;
     }
     
 }

@@ -25,18 +25,20 @@ import org.apache.shardingsphere.mcp.support.workflow.WorkflowSessionContext;
 import org.apache.shardingsphere.mcp.support.workflow.model.AlgorithmCandidate;
 import org.apache.shardingsphere.mcp.support.workflow.model.AlgorithmPropertyRequirement;
 import org.apache.shardingsphere.mcp.support.workflow.model.ClarifiedIntent;
+import org.apache.shardingsphere.mcp.support.workflow.model.RuleArtifact;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowContextSnapshot;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowIssue;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowIssueCode;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowKind;
 import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowLifecycle;
-import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowRequest;
 import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowPlanningSupport;
 import org.apache.shardingsphere.mcp.support.workflow.service.WorkflowRuleValueUtils;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Sharding workflow planning service.
@@ -81,7 +83,7 @@ public final class ShardingWorkflowPlanningService {
                 ShardingFeatureDefinition.TABLE_RULE_WORKFLOW_KIND, WorkflowLifecycle.OPERATION_CREATE, "Sharding table rule workflow plan.",
                 actual -> !inspectionService.queryTableRule(queryFacade, actual.getDatabase(), actual.getTable()).isEmpty(),
                 inputValidator::ensureRequiredTableRuleInputs, (actual, snapshot) -> planAlgorithms(queryFacade, actual,
-                        shouldPlanShardingAlgorithm(actual), shouldPlanTableRuleKeyGenerator(actual), snapshot),
+                        AlgorithmPlanningScope.of(shouldPlanShardingAlgorithm(actual), shouldPlanTableRuleKeyGenerator(actual)), snapshot),
                 actual -> distSQLPlanningService.planTableRule(actual, actual.getOperationType())));
     }
     
@@ -116,7 +118,7 @@ public final class ShardingWorkflowPlanningService {
                 actual -> containsDefaultStrategy(inspectionService.queryDefaultStrategy(queryFacade, actual.getDatabase()),
                         queryFacade, actual.getDatabase(), actual.getDefaultStrategyType()),
                 inputValidator::ensureRequiredDefaultStrategyInputs,
-                (actual, snapshot) -> planAlgorithms(queryFacade, actual, shouldPlanShardingAlgorithm(actual), false, snapshot),
+                (actual, snapshot) -> planAlgorithms(queryFacade, actual, shouldPlanShardingAlgorithm(actual) ? AlgorithmPlanningScope.SHARDING : AlgorithmPlanningScope.NONE, snapshot),
                 actual -> distSQLPlanningService.planDefaultStrategy(actual, actual.getOperationType())));
     }
     
@@ -133,7 +135,7 @@ public final class ShardingWorkflowPlanningService {
         return planLifecycleWorkflow(workflowSessionContext, request, new ShardingWorkflowLifecycleSpec(
                 ShardingFeatureDefinition.KEY_GENERATOR_WORKFLOW_KIND, WorkflowLifecycle.OPERATION_CREATE, "Sharding key generator workflow plan.",
                 actual -> !inspectionService.queryKeyGenerator(queryFacade, actual.getDatabase(), actual.getKeyGeneratorName()).isEmpty(),
-                inputValidator::ensureRequiredKeyGeneratorInputs, (actual, snapshot) -> planAlgorithms(queryFacade, actual, false, true, snapshot),
+                inputValidator::ensureRequiredKeyGeneratorInputs, (actual, snapshot) -> planAlgorithms(queryFacade, actual, AlgorithmPlanningScope.KEY_GENERATOR, snapshot),
                 actual -> distSQLPlanningService.planKeyGenerator(actual, actual.getOperationType())));
     }
     
@@ -150,8 +152,8 @@ public final class ShardingWorkflowPlanningService {
         return planLifecycleWorkflow(workflowSessionContext, request, new ShardingWorkflowLifecycleSpec(
                 ShardingFeatureDefinition.KEY_GENERATE_STRATEGY_WORKFLOW_KIND, WorkflowLifecycle.OPERATION_CREATE, "Sharding key generate strategy workflow plan.",
                 actual -> !inspectionService.queryKeyGenerateStrategy(queryFacade, actual.getDatabase(), actual.getKeyGenerateStrategyName()).isEmpty(),
-                inputValidator::ensureRequiredKeyGenerateStrategyInputs, (actual, snapshot) -> planAlgorithms(queryFacade, actual, false,
-                        shouldPlanKeyGenerateStrategyGenerator(actual), snapshot),
+                inputValidator::ensureRequiredKeyGenerateStrategyInputs, (actual, snapshot) -> planAlgorithms(queryFacade, actual,
+                        shouldPlanKeyGenerateStrategyGenerator(actual) ? AlgorithmPlanningScope.KEY_GENERATOR : AlgorithmPlanningScope.NONE, snapshot),
                 actual -> distSQLPlanningService.planKeyGenerateStrategy(actual, actual.getOperationType())));
     }
     
@@ -168,18 +170,18 @@ public final class ShardingWorkflowPlanningService {
         WorkflowContextSnapshot result = prepareSnapshot(workflowSessionContext, request, ShardingFeatureDefinition.COMPONENT_CLEANUP_WORKFLOW_KIND,
                 WorkflowLifecycle.OPERATION_DROP, "Sharding rule component cleanup workflow plan.");
         ShardingWorkflowRequest mergedRequest = (ShardingWorkflowRequest) result.getRequest();
+        if (!ensureCleanupDropOnly(mergedRequest, result)) {
+            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, WorkflowLifecycle.STATUS_FAILED);
+        }
         if (!inputValidator.ensureDatabase(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
         }
         if (!inputValidator.ensureRequiredCleanupInputs(mergedRequest, result)) {
-            addRequiredInputClarification(mergedRequest, result);
+            addRequiredInputClarification(result);
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
         }
         if (!inputValidator.ensureCleanupIdentifiers(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, result.getStatus());
-        }
-        if (!ensureCleanupDropOnly(mergedRequest, result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, WorkflowLifecycle.STATUS_FAILED);
         }
         if (!isUnusedComponent(queryFacade, mergedRequest) || !queryUsedBy(queryFacade, mergedRequest).isEmpty()) {
             result.getIssues().add(new WorkflowIssue(WorkflowIssueCode.RULE_STATE_MISMATCH, "error", WorkflowLifecycle.STEP_DISCOVERING,
@@ -204,10 +206,10 @@ public final class ShardingWorkflowPlanningService {
     
     private WorkflowContextSnapshot planLifecycleWorkflow(final WorkflowSessionContext workflowSessionContext, final ShardingWorkflowRequest request,
                                                           final ShardingWorkflowLifecycleSpec spec) {
-        WorkflowContextSnapshot result = prepareSnapshot(workflowSessionContext, request, spec.getWorkflowKind(), spec.getDefaultOperationType(), spec.getSummary());
+        WorkflowContextSnapshot result = prepareSnapshot(workflowSessionContext, request, spec.workflowKind(), spec.defaultOperationType(), spec.summary());
         ShardingWorkflowRequest mergedRequest = (ShardingWorkflowRequest) result.getRequest();
         if (!planningSupport.ensureSupportedOperationType(result.getClarifiedIntent(), SUPPORTED_LIFECYCLE_OPERATION_TYPES, result)) {
-            return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, WorkflowLifecycle.STATUS_FAILED);
+            return planningSupport.persistPlanningInterruption(workflowSessionContext, result);
         }
         if (!inputValidator.ensureDatabase(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
@@ -215,47 +217,40 @@ public final class ShardingWorkflowPlanningService {
         if (!inputValidator.ensureIdentifiers(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, result.getStatus());
         }
-        if (!inputValidator.ensureCompatibleInputs(spec.getWorkflowKind(), mergedRequest, result)) {
+        if (!inputValidator.ensureCompatibleInputs(spec.workflowKind(), mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, result.getStatus());
         }
-        if (!spec.getRequiredInputSupplier().apply(mergedRequest, result)) {
-            addRequiredInputClarification(mergedRequest, result);
+        if (!spec.requiredInputSupplier().apply(mergedRequest, result)) {
+            addRequiredInputClarification(result);
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, result.getStatus());
         }
-        if (!planningSupport.ensureLifecycleState(spec.getSummary(), result.getClarifiedIntent(), spec.getExistsSupplier().apply(mergedRequest), result)) {
+        if (!planningSupport.ensureLifecycleState(spec.summary(), result.getClarifiedIntent(), spec.existsSupplier().apply(mergedRequest), result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_FAILED, WorkflowLifecycle.STATUS_FAILED);
         }
-        if (!spec.getAlgorithmPlanSupplier().apply(mergedRequest, result)) {
+        if (!spec.algorithmPlanSupplier().apply(mergedRequest, result)) {
             return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_CLARIFYING, WorkflowLifecycle.STATUS_CLARIFYING);
         }
-        result.getRuleArtifacts().add(spec.getArtifactSupplier().apply(mergedRequest));
+        result.getRuleArtifacts().add(spec.artifactSupplier().apply(mergedRequest));
         return workflowSessionContext.persist(result, WorkflowLifecycle.STEP_REVIEW, WorkflowLifecycle.STATUS_PLANNED);
     }
     
-    private void addRequiredInputClarification(final ShardingWorkflowRequest request, final WorkflowContextSnapshot snapshot) {
-        inputValidator.addRequiredInputIssue(request, snapshot);
-        snapshot.getClarifiedIntent().getClarificationMessages().add(
-                request.getFieldSemantics().isEmpty() ? "Please provide the missing sharding planning inputs." : request.getFieldSemantics());
+    private void addRequiredInputClarification(final WorkflowContextSnapshot snapshot) {
+        inputValidator.addRequiredInputIssue(snapshot);
     }
     
     private WorkflowContextSnapshot prepareSnapshot(final WorkflowSessionContext workflowSessionContext, final ShardingWorkflowRequest request,
                                                     final WorkflowKind workflowKind, final String defaultOperationType, final String summary) {
         WorkflowContextSnapshot result = workflowSessionContext.getOrCreate(request.getPlanId());
         ShardingWorkflowRequest mergedRequest = ShardingWorkflowRequest.merge(result.getRequest(), request);
-        ClarifiedIntent clarifiedIntent = resolveIntent(mergedRequest, defaultOperationType);
+        ClarifiedIntent clarifiedIntent = ShardingFeatureDefinition.COMPONENT_CLEANUP_WORKFLOW_KIND.equals(workflowKind)
+                ? planningSupport.createFixedOperationIntent(mergedRequest, defaultOperationType)
+                : planningSupport.createOperationIntent(mergedRequest, defaultOperationType);
         planningSupport.prepareSnapshot(result, workflowKind, mergedRequest, null, clarifiedIntent, summary, INTERACTION_STEPS, VALIDATION_LAYERS);
         if (ShardingFeatureDefinition.TABLE_RULE_WORKFLOW_KIND.equals(workflowKind)) {
             result.getResourceUriTemplates().addAll(List.of(ShardingFeatureDefinition.STORAGE_UNITS_RESOURCE_URI,
                     ShardingFeatureDefinition.SINGLE_TABLES_RESOURCE_URI, ShardingFeatureDefinition.SINGLE_TABLE_RESOURCE_URI));
         }
         planningSupport.applyResolvedIntent(mergedRequest, clarifiedIntent);
-        return result;
-    }
-    
-    private ClarifiedIntent resolveIntent(final WorkflowRequest request, final String defaultOperationType) {
-        ClarifiedIntent result = new ClarifiedIntent();
-        result.setOperationType(request.getOperationType().isEmpty() ? defaultOperationType : request.getOperationType());
-        result.setFieldSemantics("DistSQL-visible sharding rule fields only.");
         return result;
     }
     
@@ -267,18 +262,18 @@ public final class ShardingWorkflowPlanningService {
                 && !WorkflowRuleValueUtils.getRuleValue(each, "type").isEmpty());
     }
     
-    private boolean planAlgorithms(final MCPFeatureQueryFacade queryFacade, final ShardingWorkflowRequest request, final boolean includeShardingAlgorithm,
-                                   final boolean includeKeyGenerator, final WorkflowContextSnapshot snapshot) {
-        if (!includeShardingAlgorithm && !includeKeyGenerator) {
+    private boolean planAlgorithms(final MCPFeatureQueryFacade queryFacade, final ShardingWorkflowRequest request,
+                                   final AlgorithmPlanningScope planningScope, final WorkflowContextSnapshot snapshot) {
+        if (AlgorithmPlanningScope.NONE == planningScope) {
             return true;
         }
         List<AlgorithmCandidate> algorithmCandidates = algorithmRecommendationService.recommend(
                 request, inspectionService.queryAlgorithmPlugins(queryFacade), inspectionService.queryKeyGenerateAlgorithmPlugins(queryFacade),
-                includeShardingAlgorithm, includeKeyGenerator, snapshot.getIssues());
+                planningScope.includesShardingAlgorithm(), planningScope.includesKeyGenerator(), snapshot.getIssues());
         snapshot.getAlgorithmCandidates().addAll(algorithmCandidates);
         applyRecommendedAlgorithms(request, algorithmCandidates);
         return planningSupport.isReadyForArtifactPlanning(request, snapshot.getClarifiedIntent(), snapshot,
-                findPropertyRequirements(request, includeShardingAlgorithm, includeKeyGenerator),
+                findPropertyRequirements(request, planningScope),
                 "Please use sharding algorithms visible in the current Proxy and provide required properties.");
     }
     
@@ -292,12 +287,11 @@ public final class ShardingWorkflowPlanningService {
         }
     }
     
-    private List<AlgorithmPropertyRequirement> findPropertyRequirements(final ShardingWorkflowRequest request, final boolean includeShardingAlgorithm,
-                                                                        final boolean includeKeyGenerator) {
-        if (includeShardingAlgorithm && includeKeyGenerator) {
+    private List<AlgorithmPropertyRequirement> findPropertyRequirements(final ShardingWorkflowRequest request, final AlgorithmPlanningScope planningScope) {
+        if (AlgorithmPlanningScope.BOTH == planningScope) {
             return algorithmPropertyTemplateService.findRequirements(request.getAlgorithmType(), request.getKeyGeneratorType());
         }
-        return includeShardingAlgorithm
+        return AlgorithmPlanningScope.SHARDING == planningScope
                 ? algorithmPropertyTemplateService.findAlgorithmRequirements(request.getAlgorithmType())
                 : algorithmPropertyTemplateService.findKeyGeneratorRequirements(request.getKeyGeneratorType());
     }
@@ -313,6 +307,29 @@ public final class ShardingWorkflowPlanningService {
     
     private boolean shouldPlanKeyGenerateStrategyGenerator(final ShardingWorkflowRequest request) {
         return !WorkflowLifecycle.OPERATION_DROP.equalsIgnoreCase(request.getOperationType()) && request.getKeyGeneratorName().isEmpty();
+    }
+    
+    private enum AlgorithmPlanningScope {
+        
+        NONE,
+        SHARDING,
+        KEY_GENERATOR,
+        BOTH;
+        
+        private static AlgorithmPlanningScope of(final boolean includesShardingAlgorithm, final boolean includesKeyGenerator) {
+            if (includesShardingAlgorithm) {
+                return includesKeyGenerator ? BOTH : SHARDING;
+            }
+            return includesKeyGenerator ? KEY_GENERATOR : NONE;
+        }
+        
+        private boolean includesShardingAlgorithm() {
+            return SHARDING == this || BOTH == this;
+        }
+        
+        private boolean includesKeyGenerator() {
+            return KEY_GENERATOR == this || BOTH == this;
+        }
     }
     
     private boolean isUnusedComponent(final MCPFeatureQueryFacade queryFacade, final ShardingWorkflowRequest request) {
@@ -344,6 +361,13 @@ public final class ShardingWorkflowPlanningService {
                                      final String fieldName, final String expected) {
         queryFacade.checkDatabaseCapability(databaseName);
         return rows.stream().anyMatch(each -> queryFacade.isSameIdentifier(databaseName, IdentifierScope.TABLE, expected, WorkflowRuleValueUtils.getRuleValue(each, fieldName)));
+    }
+    
+    private record ShardingWorkflowLifecycleSpec(WorkflowKind workflowKind, String defaultOperationType, String summary,
+                                                 Function<ShardingWorkflowRequest, Boolean> existsSupplier,
+                                                 BiFunction<ShardingWorkflowRequest, WorkflowContextSnapshot, Boolean> requiredInputSupplier,
+                                                 BiFunction<ShardingWorkflowRequest, WorkflowContextSnapshot, Boolean> algorithmPlanSupplier,
+                                                 Function<ShardingWorkflowRequest, RuleArtifact> artifactSupplier) {
     }
     
 }

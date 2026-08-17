@@ -17,10 +17,10 @@
 
 package org.apache.shardingsphere.test.e2e.mcp.llm.conversation.client;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Preconditions;
 import lombok.RequiredArgsConstructor;
-import org.apache.shardingsphere.infra.util.json.JsonUtils;
+import org.apache.shardingsphere.infra.util.json.JsonTypeReference;
+import org.apache.shardingsphere.infra.util.json.JsonEngine;
 import org.apache.shardingsphere.test.e2e.mcp.llm.config.LLME2EConfiguration;
 
 import java.io.IOException;
@@ -88,7 +88,8 @@ public final class LLMChatModelClient {
      */
     public LLMChatCompletion complete(final List<LLMChatMessage> messages, final List<Map<String, Object>> tools,
                                       final String toolChoice, final boolean jsonResponse) throws IOException, InterruptedException {
-        HttpResponse<String> response = sendCompletionRequest(createCompletionRequestPayload(messages, tools, toolChoice, jsonResponse, COMPLETION_MAX_TOKENS), config.getRequestTimeoutSeconds());
+        HttpResponse<String> response = sendCompletionRequest(
+                createCompletionRequestPayload(messages, tools, toolChoice, jsonResponse, COMPLETION_MAX_TOKENS), config.getRequestTimeoutSeconds());
         if (200 != response.statusCode()) {
             throw new IllegalStateException(String.format("Model completion request failed with status %d%s.", response.statusCode(), createErrorCodeSuffix(response.body())));
         }
@@ -127,7 +128,7 @@ public final class LLMChatModelClient {
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Authorization", "Bearer " + config.getApiKey())
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.toJsonString(requestPayload)))
+                .POST(HttpRequest.BodyPublishers.ofString(JsonEngine.marshal(requestPayload)))
                 .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
@@ -152,21 +153,8 @@ public final class LLMChatModelClient {
         return castToList(payload.get("data")).stream().anyMatch(each -> config.getModelName().equals(Objects.toString(each.get("id"), "").trim()));
     }
     
-    boolean hasCompletionChoice(final String responseBody) {
-        return !castToList(parseJsonObject(responseBody, "Failed to parse readiness completion response.").get("choices")).isEmpty();
-    }
-    
     boolean hasToolCallChoice(final String responseBody) {
         return !createToolCalls(getFirstAssistantMessage(responseBody, "Failed to parse readiness tool-call response.").get("tool_calls")).isEmpty();
-    }
-    
-    boolean hasJsonCompletionChoice(final String responseBody) {
-        String content = Objects.toString(getFirstAssistantMessage(responseBody, "Failed to parse readiness JSON response.").get("content"), "").trim();
-        if (content.isEmpty()) {
-            return false;
-        }
-        parseJsonObject(content, "Failed to parse readiness JSON completion content.");
-        return true;
     }
     
     private Map<String, Object> getFirstAssistantMessage(final String responseBody, final String errorMessage) {
@@ -226,21 +214,26 @@ public final class LLMChatModelClient {
         if (null == value) {
             return List.of();
         }
-        return JsonUtils.fromJsonString(JsonUtils.toJsonString(value), new TypeReference<>() {
-        });
+        Preconditions.checkState(value instanceof List, "Expected a JSON array, but got `%s`.", value.getClass().getSimpleName());
+        List<?> values = (List<?>) value;
+        Preconditions.checkState(values.stream().allMatch(Map.class::isInstance), "Expected a JSON array of objects.");
+        return values.stream().map(this::castToMap).toList();
     }
     
+    @SuppressWarnings("unchecked")
     private Map<String, Object> castToMap(final Object value) {
         if (null == value) {
             return Map.of();
         }
-        return JsonUtils.fromJsonString(JsonUtils.toJsonString(value), new TypeReference<>() {
-        });
+        Preconditions.checkState(value instanceof Map, "Expected a JSON object, but got `%s`.", value.getClass().getSimpleName());
+        Map<?, ?> result = (Map<?, ?>) value;
+        Preconditions.checkState(result.keySet().stream().allMatch(String.class::isInstance), "Expected a JSON object with string keys.");
+        return (Map<String, Object>) result;
     }
     
     private Map<String, Object> parseJsonObject(final String responseBody, final String errorMessage) {
         try {
-            return JsonUtils.fromJsonString(responseBody, new TypeReference<>() {
+            return JsonEngine.unmarshal(responseBody, new JsonTypeReference<Map<String, Object>>() {
             });
             // CHECKSTYLE:OFF
         } catch (final Exception ex) {

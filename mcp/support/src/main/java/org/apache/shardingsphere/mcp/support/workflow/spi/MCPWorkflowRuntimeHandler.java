@@ -17,8 +17,24 @@
 
 package org.apache.shardingsphere.mcp.support.workflow.spi;
 
+import org.apache.shardingsphere.mcp.support.database.spi.MCPFeatureQueryFacade;
+import org.apache.shardingsphere.mcp.support.workflow.model.ValidationReport;
+import org.apache.shardingsphere.mcp.support.workflow.model.WorkflowContextSnapshot;
+
 /**
- * Workflow runtime handler for validation and apply synchronization.
+ * Workflow runtime handler for feature-specific validation of the state visible from ShardingSphere Proxy.
+ *
+ * <p>Implementations must be side-effect free and repeatable because core workflow execution may poll the report after applying artifacts.</p>
  */
-public interface MCPWorkflowRuntimeHandler extends MCPWorkflowValidationHandler, MCPWorkflowApplySynchronizationHandler {
+@FunctionalInterface
+public interface MCPWorkflowRuntimeHandler {
+    
+    /**
+     * Validate the runtime state for one workflow plan.
+     *
+     * @param snapshot workflow snapshot
+     * @param queryFacade direct query facade
+     * @return feature-specific validation report
+     */
+    ValidationReport validate(WorkflowContextSnapshot snapshot, MCPFeatureQueryFacade queryFacade);
 }
